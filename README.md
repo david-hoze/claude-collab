@@ -74,6 +74,16 @@ See [docs/spec.md](docs/spec.md) for full command reference.
 
 When two agents need to edit the same file, they co-claim it with `--shared`. When the first agent commits, their changes are staged (`git add`) but not committed. When the last agent commits, the actual `git commit` fires with everyone's changes and a combined message. Agents don't need to coordinate timing — just `commit` when done and move on.
 
+## Setting up your project
+
+Once `claude-collab` is in your PATH, add this to your project's `CLAUDE.md`:
+
+```markdown
+Read and follow the instructions in CLAUDE_COLLAB.md.
+```
+
+Then copy [`docs/CLAUDE_COLLAB.md`](docs/CLAUDE_COLLAB.md) into your project root. This file contains the agent-facing instructions that teach Claude Code how to use the tool.
+
 ## Running tests
 
 ```
@@ -82,5 +92,6 @@ cabal test
 
 ## Documentation
 
+- [CLAUDE_COLLAB.md](docs/CLAUDE_COLLAB.md) — agent-facing instructions (copy into your project)
 - [Specification](docs/spec.md) — full command reference and JSON schemas
 - [Implementation status](docs/implementation-status.md) — architecture, internals, known limitations
