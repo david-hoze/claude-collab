@@ -1,0 +1,55 @@
+# Haskell / Cabal
+dist-newstyle/
+.ghc.environment.*
+*.o
+*.hi
+*.hie
+*.chi
+*.chs
+*.bak
+
+# VS Code
+.vscode/
+.history/
+
+# rgit specific
+.rgit-cache.yaml
+*.tmp
+
+# CLI test work directories
+test/cli/output/
+
+# bit's own data directory (created if tests accidentally run at project root)
+.bit/
+
+# Test report
+test.txt
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Dev binaries (parallel worker builds)
+dev-bin/
+bit-dev.exe
+bit-git-router-dev.exe
+
+# Artifacts
+literate-output/
+
+# Ignore Claude local settings
+.claude/settings.local.json
+
+# Ignore the workspace layout (very noisy)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+
+# Ignore community plugin caches/data that are auto-generated
+.obsidian/plugins/
+.obsidian/cache/
+.obsidian/app.json
+.obsidian/appearance.json
+.obsidian/core-plugins.json
+
+# Optional: Ignore your theme CSS if you don't want to sync it
+# .obsidian/themes/

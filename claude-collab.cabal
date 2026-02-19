@@ -1,0 +1,65 @@
+cabal-version:      3.0
+name:               claude-collab
+version:            0.1.0.0
+synopsis:           Cross-platform multi-agent coordination tool for Claude Code
+license:            MIT
+build-type:         Simple
+
+executable claude-collab
+  main-is:          Main.hs
+  hs-source-dirs:   app
+  other-modules:    ClaudeCollab.Types
+                  , ClaudeCollab.Lock
+                  , ClaudeCollab.Registry
+                  , ClaudeCollab.Channel
+                  , ClaudeCollab.Git
+                  , ClaudeCollab.Commands
+  build-depends:    base >= 4.17 && < 5
+                  , aeson
+                  , aeson-pretty
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , fsnotify
+                  , optparse-applicative
+                  , process
+                  , text
+                  , time
+                  , vector
+  default-language: Haskell2010
+  default-extensions: OverloadedStrings
+                    , DeriveGeneric
+                    , RecordWildCards
+                    , ScopedTypeVariables
+  ghc-options:      -Wall -O2 -threaded
+
+test-suite claude-collab-test
+  type:             exitcode-stdio-1.0
+  main-is:          Spec.hs
+  hs-source-dirs:   test, app
+  other-modules:    ClaudeCollab.Types
+                  , ClaudeCollab.Lock
+                  , ClaudeCollab.Registry
+                  , ClaudeCollab.Channel
+                  , ClaudeCollab.Git
+                  , ClaudeCollab.Commands
+  build-depends:    base >= 4.17 && < 5
+                  , aeson
+                  , aeson-pretty
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , fsnotify
+                  , optparse-applicative
+                  , process
+                  , text
+                  , time
+                  , vector
+  default-language: Haskell2010
+  default-extensions: OverloadedStrings
+                    , DeriveGeneric
+                    , RecordWildCards
+                    , ScopedTypeVariables
+  ghc-options:      -Wall -O2 -threaded
