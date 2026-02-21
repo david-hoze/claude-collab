@@ -91,6 +91,9 @@ sendMessage from msgtype msg target = do
   return n
 
 -- | Read messages from cursor+1 to latest. Returns (messages, new_cursor).
+-- Filters out the agent's own messages so they don't obscure messages from
+-- other agents. The cursor still advances to latest so own messages aren't
+-- re-read on the next call.
 readMessages :: Text -> IO ([Message], Int)
 readMessages hash = do
   cursor <- readCursor hash
@@ -98,9 +101,10 @@ readMessages hash = do
   if cursor >= latest
     then return ([], cursor)
     else do
-      msgs <- readRange (cursor + 1) latest
+      allMsgs <- readRange (cursor + 1) latest
+      let otherMsgs = filter (\m -> msgFrom m /= hash) allMsgs
       writeCursor hash latest
-      return (msgs, latest)
+      return (otherMsgs, latest)
 
 -- | Read messages from a specific sequence number without using or advancing the cursor.
 readMessagesFrom :: Int -> IO ([Message], Int)
