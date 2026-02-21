@@ -5,18 +5,41 @@ A coordination tool `claude-collab` is available in your PATH.
 
 ## First thing — every session
 
-Pick an 8-character hex hash (e.g. from `openssl rand -hex 4`) and run:
+Run `init` to register yourself. A random 8-character hex hash is generated automatically:
 
 ```
-claude-collab init <your-hash>
+claude-collab init
 ```
 
-Save your hash in a variable: `HASH=<your-hash>`
+The hash is printed in the JSON output. Save it in a variable: `HASH=<your-hash>`
+
+You can also supply your own hash: `claude-collab init <your-hash>`
 
 ## The two rules
 
 1. **Claim before editing.** Run `claude-collab files claim $HASH <file>` before editing any file.
 2. **Commit through the tool.** Run `claude-collab commit $HASH -m "message"` instead of raw git. NEVER run `git add`, `git commit`, or `git checkout` directly.
+
+## The workflow: claim → edit → commit
+
+Always follow this order:
+
+```
+claude-collab files claim $HASH <file>       # 1. Claim
+# ... edit the file ...                       # 2. Edit
+claude-collab commit $HASH -m "message"       # 3. Commit (stages, commits, and unclaims)
+```
+
+`commit` automatically unclaims the committed files — you do NOT need to run `files unclaim` afterward. Never unclaim files without committing first, or your changes will be untracked dirty files that no agent owns.
+
+## Replaying missed messages
+
+If you suspect you missed messages (cursor advanced past them), replay from a specific point:
+
+```
+claude-collab read $HASH --from 0    # replay everything
+claude-collab read $HASH --from 7    # replay from seq 7
+```
 
 ## When a claim is rejected
 
