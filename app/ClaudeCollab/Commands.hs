@@ -29,6 +29,7 @@ import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeDirectoryRecursive,
                          removeFile, renameFile)
 import System.Exit (ExitCode(..), exitWith)
+import System.Process (readProcessWithExitCode)
 import System.FilePath ((<.>))
 import System.IO (hFlush, hPutStrLn, stderr, stdin, stdout)
 import qualified Data.ByteString.Char8 as BS8
@@ -53,9 +54,28 @@ printError = hPutStrLn stderr
 jsonError :: Text -> IO ()
 jsonError msg = printJSON $ encode $ object ["ok" .= False, "error" .= msg]
 
+-- | Generate a random 8-character hex hash
+generateHash :: IO Text
+generateHash = do
+  (code, out, _) <- readProcessWithExitCode "openssl" ["rand", "-hex", "4"] ""
+  case code of
+    ExitSuccess -> pure $ T.strip (T.pack out)
+    _           -> do
+      -- Fallback: use current time in picoseconds as entropy
+      now <- getCurrentTime
+      let s = show now  -- e.g. "2026-02-21 21:20:05.123456 UTC"
+          digits = filter (\c -> c >= '0' && c <= '9') s
+          hexChars = "0123456789abcdef"
+          toHex n = [hexChars !! (n `mod` 16)]
+          h = concatMap (\c -> toHex (fromEnum c)) (take 8 digits)
+      pure (T.pack (take 8 (h ++ "00000000")))
+
 -- | Initialize an agent
-cmdInit :: Text -> IO ()
-cmdInit hash = do
+cmdInit :: Maybe Text -> IO ()
+cmdInit mbHash = do
+  hash <- case mbHash of
+    Just h  -> pure h
+    Nothing -> generateHash
   -- Create directories
   createDirectoryIfMissing True channelDir
   createDirectoryIfMissing True (agentDir hash)
@@ -105,11 +125,13 @@ cmdSend hash msg msgtype target = do
     ]
 
 -- | Read messages
-cmdRead :: Text -> Bool -> Int -> IO ()
-cmdRead hash wait timeout = do
-  (msgs, cur) <- if wait
-    then readMessagesWait hash timeout
-    else readMessages hash
+cmdRead :: Text -> Bool -> Int -> Maybe Int -> IO ()
+cmdRead hash wait timeout mbFrom = do
+  (msgs, cur) <- case mbFrom of
+    Just fromSeq -> readMessagesFrom fromSeq
+    Nothing
+      | wait      -> readMessagesWait hash timeout
+      | otherwise -> readMessages hash
   printJSON $ encode $ object
     [ "messages" .= msgs
     , "cursor"   .= cur
@@ -154,13 +176,13 @@ cmdFilesClaim hash paths shared = do
                    (Map.insert normalP newClaim myClaimsAcc)
               ((otherHash, _):_)
                 | not shared -> do
-                    printError $ "⚠ " ++ normalP ++ " is claimed by " ++ T.unpack otherHash
+                    printError $ "WARNING: " ++ normalP ++ " is claimed by " ++ T.unpack otherHash
                       ++ ". Coordinate in channel, then use --shared to co-claim."
                     go ps claimed sharedFiles (normalP : rejected) regAcc myClaimsAcc
                 | otherwise -> do
                     -- Co-claim
                     let newClaim = ClaimState False Nothing
-                    printError $ "ℹ " ++ normalP ++ " is now co-claimed with " ++ T.unpack otherHash
+                    printError $ "INFO: " ++ normalP ++ " is now co-claimed with " ++ T.unpack otherHash
                       ++ ". Coordinate changes in channel."
                     go ps claimed (normalP : sharedFiles) rejected regAcc
                        (Map.insert normalP newClaim myClaimsAcc)
@@ -278,7 +300,7 @@ cmdCommit hash commitMsg = do
         then do
           let pendingFiles = [ fp | (fp, cs) <- Map.toList (agentClaimed myInfo), claimStaged cs ]
           let waitingOn = findWaitingOn pendingFiles hash reg
-          printError $ "⚠ You have a pending commit (waiting on "
+          printError $ "WARNING: You have a pending commit (waiting on "
             ++ T.unpack (T.intercalate ", " (map fst waitingOn))
             ++ " for " ++ show (map snd waitingOn) ++ "). Cannot commit again until it resolves."
           exitWithCode exitGeneral
@@ -299,7 +321,7 @@ doCommit hash commitMsg myInfo reg = do
 
       -- Step 3: Warn about unclaimed dirty files
       let unclaimedDirty = filter (\p -> findOwner p reg == "unclaimed") dirtyPaths
-      mapM_ (\p -> printError $ "⚠ Unclaimed dirty file: " ++ p) unclaimedDirty
+      mapM_ (\p -> printError $ "WARNING: Unclaimed dirty file: " ++ p) unclaimedDirty
 
       if null myDirtyFiles
         then do
@@ -533,7 +555,7 @@ cmdReserve hash resource mbTtl timeoutSec = do
   resources <- readResources
   case Map.lookup resource resources of
     Nothing -> do
-      printError $ "⚠ Unknown resource: " ++ T.unpack resource
+      printError $ "WARNING: Unknown resource: " ++ T.unpack resource
       printError $ "Available resources: " ++ show (Map.keys resources)
       jsonError ("Unknown resource: " <> resource)
       exitWithCode exitGeneral
@@ -550,7 +572,7 @@ reserveLoop hash resource ttl timeoutSec = go (timeoutSec * 2)  -- 500ms interva
       case result of
         Right () -> return ()
         Left (holder, remaining) -> do
-          printError $ "⚠ Timed out waiting for " ++ T.unpack resource
+          printError $ "WARNING: Timed out waiting for " ++ T.unpack resource
             ++ " (held by " ++ T.unpack holder
             ++ ", " ++ show remaining ++ "s remaining)."
           jsonError ("Timed out waiting for " <> resource)
@@ -594,7 +616,7 @@ tryReserve hash resource ttl = do
             return (Right ())
         | isExpired now existing -> do
             -- Expired, steal it
-            printError $ "⚠ Stale reservation from " ++ T.unpack (resHolder existing)
+            printError $ "WARNING: Stale reservation from " ++ T.unpack (resHolder existing)
               ++ " expired. Taking over."
             let r = Reservation hash now ttl Nothing
             writeReservations (Map.insert resource r reservations)
@@ -634,7 +656,7 @@ cmdRelease hash resource = do
               , "resource" .= resource
               ]
         | otherwise -> do
-            printError $ "⚠ " ++ T.unpack resource ++ " is held by "
+            printError $ "WARNING: " ++ T.unpack resource ++ " is held by "
               ++ T.unpack (resHolder existing) ++ ", not you."
             jsonError (resource <> " is held by " <> resHolder existing <> ", not you")
             exitWithCode exitGeneral

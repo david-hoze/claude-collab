@@ -10,9 +10,9 @@ import ClaudeCollab.Commands
 import ClaudeCollab.Types (MessageType(..))
 
 data Command
-  = Init Text
+  = Init (Maybe Text)
   | Send Text Text MessageType (Maybe Text)
-  | Read Text Bool Int
+  | Read Text Bool Int (Maybe Int)
   | Watch Text
   | FilesClaim Text [FilePath] Bool
   | FilesUnclaim Text [FilePath]
@@ -56,7 +56,7 @@ commandParser = hsubparser
 
 initParser :: Parser Command
 initParser = Init
-  <$> argument (T.pack <$> str) (metavar "HASH")
+  <$> optional (argument (T.pack <$> str) (metavar "HASH"))
 
 sendParser :: Parser Command
 sendParser = Send
@@ -81,6 +81,10 @@ readParser = Read
       <> value 60
       <> metavar "SECONDS"
       <> help "Timeout for --wait (default 60)" )
+  <*> optional (option auto
+      ( long "from"
+      <> metavar "SEQ"
+      <> help "Replay messages from this sequence number (ignores cursor)" ))
 
 watchParser :: Parser Command
 watchParser = Watch
@@ -162,9 +166,9 @@ main = do
     exitWith (ExitFailure 1)
 
 runCommand :: Command -> IO ()
-runCommand (Init hash)                      = cmdInit hash
+runCommand (Init mbHash)                     = cmdInit mbHash
 runCommand (Send hash msg ty target)        = cmdSend hash msg ty target
-runCommand (Read hash wait timeout)         = cmdRead hash wait timeout
+runCommand (Read hash wait timeout from)     = cmdRead hash wait timeout from
 runCommand (Watch hash)                     = cmdWatch hash
 runCommand (FilesClaim hash paths shared)   = cmdFilesClaim hash paths shared
 runCommand (FilesUnclaim hash paths)        = cmdFilesUnclaim hash paths

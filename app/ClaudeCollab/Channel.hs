@@ -1,6 +1,7 @@
 module ClaudeCollab.Channel
   ( sendMessage
   , readMessages
+  , readMessagesFrom
   , readMessagesWait
   , watchMessages
   , readSeq
@@ -99,6 +100,16 @@ readMessages hash = do
     else do
       msgs <- readRange (cursor + 1) latest
       writeCursor hash latest
+      return (msgs, latest)
+
+-- | Read messages from a specific sequence number without using or advancing the cursor.
+readMessagesFrom :: Int -> IO ([Message], Int)
+readMessagesFrom fromSeq = do
+  latest <- readSeq
+  if fromSeq > latest
+    then return ([], latest)
+    else do
+      msgs <- readRange fromSeq latest
       return (msgs, latest)
 
 -- | Read a range of message files.
