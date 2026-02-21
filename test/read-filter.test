@@ -1,0 +1,122 @@
+# =============================================================================
+# read filtering: agents should only see messages from OTHER agents
+#
+# Run with: shelltest test/read-filter.test --shell C:\Users\natanh\tools\PortableGit\usr\bin\bash.exe
+#
+# Tests:
+# - Agent A reads and does not see its own messages
+# - Agent A reads and DOES see messages from agent B
+# - Agent B reads and DOES see messages from agent A
+# - Agent B reads and does not see its own messages
+# - --from flag bypasses filter and shows all messages including own
+# =============================================================================
+
+# ---- SETUP: clean slate ----
+rm -rf .claude/agents && echo setup done
+<<<
+>>>
+setup done
+>>>= 0
+
+# ---- Init two agents ----
+claude-collab init agent_x 2>/dev/null | grep -o '"ok":true'
+<<<
+>>>
+"ok":true
+>>>= 0
+
+claude-collab init agent_y 2>/dev/null | grep -o '"ok":true'
+<<<
+>>>
+"ok":true
+>>>= 0
+
+# ---- Agent X sends 3 messages ----
+claude-collab send agent_x "msg1 from X" --type chat 2>/dev/null | grep -o '"ok":true'
+<<<
+>>>
+"ok":true
+>>>= 0
+
+claude-collab send agent_x "msg2 from X" --type chat 2>/dev/null | grep -o '"ok":true'
+<<<
+>>>
+"ok":true
+>>>= 0
+
+claude-collab send agent_x "msg3 from X" --type chat 2>/dev/null | grep -o '"ok":true'
+<<<
+>>>
+"ok":true
+>>>= 0
+
+# ---- Agent Y sends 1 message ----
+claude-collab send agent_y "msg from Y" --type chat 2>/dev/null | grep -o '"ok":true'
+<<<
+>>>
+"ok":true
+>>>= 0
+
+# ---- Agent X sends 1 more message ----
+claude-collab send agent_x "msg4 from X" --type chat 2>/dev/null | grep -o '"ok":true'
+<<<
+>>>
+"ok":true
+>>>= 0
+
+# ======================================================================
+# Agent X reads: should see agent Y's messages only (join + chat)
+# ======================================================================
+
+# Agent X should see "msg from Y"
+claude-collab read agent_x 2>/dev/null | grep -o "msg from Y"
+<<<
+>>>
+msg from Y
+>>>= 0
+
+# Agent X should NOT see own messages — read again, nothing new
+claude-collab read agent_x 2>/dev/null | grep "msg. from X"
+<<<
+>>>
+>>>= 1
+
+# ======================================================================
+# Agent Y reads: should see agent X's messages only
+# ======================================================================
+
+# Agent Y should see messages from X
+claude-collab read agent_y 2>/dev/null | grep -o "msg1 from X"
+<<<
+>>>
+msg1 from X
+>>>= 0
+
+# Agent Y should NOT see own messages
+claude-collab read agent_y 2>/dev/null | grep "msg from Y"
+<<<
+>>>
+>>>= 1
+
+# ======================================================================
+# --from flag: shows ALL messages including own
+# ======================================================================
+
+claude-collab read agent_x --from 0 2>/dev/null | grep -o "msg1 from X"
+<<<
+>>>
+msg1 from X
+>>>= 0
+
+claude-collab read agent_x --from 0 2>/dev/null | grep -o "msg from Y"
+<<<
+>>>
+msg from Y
+>>>= 0
+
+# ---- CLEANUP ----
+claude-collab cleanup agent_x >/dev/null 2>&1 && claude-collab cleanup agent_y >/dev/null 2>&1 && rm -rf .claude/agents && echo cleanup done
+<<<
+>>>
+cleanup done
+>>>= 0
