@@ -26,11 +26,8 @@ import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
-import Data.List (sortOn, isSuffixOf)
-import Data.Ord (Down(..))
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist,
-                         getHomeDirectory, getCurrentDirectory, getModificationTime,
-                         listDirectory, removeDirectoryRecursive, removeFile, renameFile)
+import System.Directory (createDirectoryIfMissing, doesFileExist,
+                         removeDirectoryRecursive, removeFile, renameFile)
 import System.Exit (ExitCode(..), exitWith)
 import System.Process (readProcessWithExitCode)
 import System.FilePath ((<.>))
@@ -57,67 +54,24 @@ printError = hPutStrLn stderr
 jsonError :: Text -> IO ()
 jsonError msg = printJSON $ encode $ object ["ok" .= False, "error" .= msg]
 
--- | Derive the agent hash from the current Claude Code session ID.
--- Looks in ~/.claude/projects/<project>/ for the most recently modified
--- .jsonl file — its filename (sans extension) is the session UUID.
--- Uses the first 8 characters as the hash.
--- Falls back to openssl rand if not running inside Claude Code.
+-- | Generate a random 8-character hex hash.
 generateHash :: IO Text
 generateHash = do
-  mbSession <- getClaudeSessionId
-  case mbSession of
-    Just sid -> pure (T.take 8 sid)
-    Nothing  -> do
-      (code, out, _) <- readProcessWithExitCode "openssl" ["rand", "-hex", "4"] ""
-      case code of
-        ExitSuccess -> pure $ T.strip (T.pack out)
-        _           -> do
-          now <- getCurrentTime
-          let s = show now
-              digits = filter (\c -> c >= '0' && c <= '9') s
-              hexChars = "0123456789abcdef"
-              toHex n = [hexChars !! (n `mod` 16)]
-              h = concatMap (\c -> toHex (fromEnum c)) (take 8 digits)
-          pure (T.pack (take 8 (h ++ "00000000")))
-
--- | Try to find the current Claude Code session ID.
--- CWD is converted to the project directory name format:
---   C:\Users\foo\repos\bar → C--Users-foo-repos-bar
--- Then we find the most recently modified .jsonl in that directory.
-getClaudeSessionId :: IO (Maybe Text)
-getClaudeSessionId = do
-  home <- getHomeDirectory
-  cwd <- getCurrentDirectory
-  let projectDir = home ++ "/.claude/projects/" ++ cwdToProjectName cwd
-  exists <- doesDirectoryExist projectDir
-  if not exists
-    then pure Nothing
-    else do
-      entries <- listDirectory projectDir
-      let jsonls = filter (".jsonl" `isSuffixOf`) entries
-      if null jsonls
-        then pure Nothing
-        else do
-          -- Sort by modification time, most recent first
-          timed <- mapM (\f -> do
-            t <- getModificationTime (projectDir ++ "/" ++ f)
-            pure (f, t)) jsonls
-          let sorted = sortOn (Down . snd) timed
-          case sorted of
-            ((f, _):_) -> do
-              let sessionId = T.pack (takeWhile (/= '.') f)
-              pure (Just sessionId)
-            [] -> pure Nothing
-
--- | Convert a CWD to Claude's project directory name format.
--- "C:\Users\foo\repos\bar" → "C--Users-foo-repos-bar"
--- "/home/foo/repos/bar"    → "-home-foo-repos-bar"
-cwdToProjectName :: FilePath -> String
-cwdToProjectName = map (\c -> if c == '/' || c == '\\' || c == ':' then '-' else c)
+  (code, out, _) <- readProcessWithExitCode "openssl" ["rand", "-hex", "4"] ""
+  case code of
+    ExitSuccess -> pure $ T.strip (T.pack out)
+    _           -> do
+      now <- getCurrentTime
+      let s = show now
+          digits = filter (\c -> c >= '0' && c <= '9') s
+          hexChars = "0123456789abcdef"
+          toHex n = [hexChars !! (n `mod` 16)]
+          h = concatMap (\c -> toHex (fromEnum c)) (take 8 digits)
+      pure (T.pack (take 8 (h ++ "00000000")))
 
 -- | Initialize an agent
-cmdInit :: Maybe Text -> IO ()
-cmdInit mbHash = do
+cmdInit :: Maybe Text -> Maybe Text -> IO ()
+cmdInit mbHash mbName = do
   hash <- case mbHash of
     Just h  -> pure h
     Nothing -> generateHash
@@ -147,18 +101,20 @@ cmdInit mbHash = do
         { agentStarted = now
         , agentStatus  = "active"
         , agentClaimed = Map.empty
+        , agentName    = mbName
         }
   modifyRegistry $ \reg -> return (Map.insert hash info reg, ())
 
   -- Send join message
-  _ <- sendMessage hash Status ("Agent " <> hash <> " joined") Nothing
+  let displayName = maybe hash (\n -> n <> " (" <> hash <> ")") mbName
+  _ <- sendMessage hash Status ("Agent " <> displayName <> " joined") Nothing
 
   -- Print result
-  printJSON $ encode $ object
+  printJSON $ encode $ object $
     [ "ok"        .= True
     , "hash"      .= hash
     , "agent_dir" .= agentDir hash
-    ]
+    ] ++ maybe [] (\n -> ["name" .= n]) mbName
 
 -- | Send a message
 cmdSend :: Text -> Text -> MessageType -> Maybe Text -> IO ()
@@ -197,7 +153,7 @@ cmdFilesClaim hash paths shared = do
 
   -- Ensure agent exists in registry
   let myInfo = Map.findWithDefault
-        (AgentInfo now "active" Map.empty)
+        (AgentInfo now "active" Map.empty Nothing)
         hash reg
 
   let otherAgents = Map.delete hash reg

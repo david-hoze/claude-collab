@@ -85,20 +85,22 @@ data AgentInfo = AgentInfo
   { agentStarted :: UTCTime
   , agentStatus  :: Text
   , agentClaimed :: Map FilePath ClaimState
+  , agentName    :: Maybe Text
   } deriving (Show, Eq, Generic)
 
 instance ToJSON AgentInfo where
-  toJSON AgentInfo{..} = object
+  toJSON AgentInfo{..} = object $
     [ "started" .= agentStarted
     , "status"  .= agentStatus
     , "claimed" .= agentClaimed
-    ]
+    ] ++ maybe [] (\n -> ["name" .= n]) agentName
 
 instance FromJSON AgentInfo where
   parseJSON = withObject "AgentInfo" $ \v -> AgentInfo
     <$> v .: "started"
     <*> v .: "status"
     <*> v .: "claimed"
+    <*> v .:? "name"
 
 -- | The full registry
 type Registry = Map Text AgentInfo

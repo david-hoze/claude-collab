@@ -2,12 +2,14 @@ module ClaudeCollab.Registry
   ( readRegistry
   , writeRegistry
   , modifyRegistry
+  , resolveAgent
   ) where
 
 import Control.Exception (SomeException, try)
 import Data.Aeson (eitherDecodeStrict', encode)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
+import Data.Text (Text)
 import qualified Data.Map.Strict as Map
 import System.Directory (renameFile)
 import System.FilePath ((<.>))
@@ -39,3 +41,17 @@ modifyRegistry f = do
   (reg', result) <- f reg
   writeRegistry reg'
   return result
+
+-- | Resolve a name-or-hash to a hash. If the input matches a registered
+-- hash directly, return it. Otherwise search agent names for a match.
+-- Returns the input unchanged if no match is found (commands will fail
+-- with "agent not found" naturally).
+resolveAgent :: Text -> IO Text
+resolveAgent nameOrHash = do
+  reg <- readRegistry
+  if Map.member nameOrHash reg
+    then return nameOrHash
+    else case [ h | (h, info) <- Map.toList reg
+                  , agentName info == Just nameOrHash ] of
+           (h:_) -> return h
+           []    -> return nameOrHash

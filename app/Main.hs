@@ -7,10 +7,11 @@ import System.Exit (exitWith, ExitCode(..))
 import Control.Exception (SomeException, catch)
 
 import ClaudeCollab.Commands
+import ClaudeCollab.Registry (resolveAgent)
 import ClaudeCollab.Types (MessageType(..))
 
 data Command
-  = Init (Maybe Text)
+  = Init (Maybe Text) (Maybe Text)
   | Send Text Text MessageType (Maybe Text)
   | Read Text Bool Int (Maybe Int)
   | Watch Text
@@ -57,10 +58,14 @@ commandParser = hsubparser
 initParser :: Parser Command
 initParser = Init
   <$> optional (argument (T.pack <$> str) (metavar "HASH"))
+  <*> optional (option (T.pack <$> str)
+      ( long "name"
+      <> metavar "NAME"
+      <> help "Human-readable name for this agent (can be used instead of hash)" ))
 
 sendParser :: Parser Command
 sendParser = Send
-  <$> argument (T.pack <$> str) (metavar "HASH")
+  <$> argument (T.pack <$> str) (metavar "HASH|NAME")
   <*> argument (T.pack <$> str) (metavar "MESSAGE")
   <*> option parseMessageType
       ( long "type"
@@ -74,7 +79,7 @@ sendParser = Send
 
 readParser :: Parser Command
 readParser = Read
-  <$> argument (T.pack <$> str) (metavar "HASH")
+  <$> argument (T.pack <$> str) (metavar "HASH|NAME")
   <*> switch (long "wait" <> help "Wait for new messages")
   <*> option auto
       ( long "timeout"
@@ -88,7 +93,7 @@ readParser = Read
 
 watchParser :: Parser Command
 watchParser = Watch
-  <$> argument (T.pack <$> str) (metavar "HASH")
+  <$> argument (T.pack <$> str) (metavar "HASH|NAME")
 
 filesParser :: Parser Command
 filesParser = hsubparser
@@ -99,13 +104,13 @@ filesParser = hsubparser
 
 filesClaimParser :: Parser Command
 filesClaimParser = FilesClaim
-  <$> argument (T.pack <$> str) (metavar "HASH")
+  <$> argument (T.pack <$> str) (metavar "HASH|NAME")
   <*> some (argument str (metavar "PATH..."))
   <*> switch (long "shared" <> help "Allow co-claiming with another agent")
 
 filesUnclaimParser :: Parser Command
 filesUnclaimParser = FilesUnclaim
-  <$> argument (T.pack <$> str) (metavar "HASH")
+  <$> argument (T.pack <$> str) (metavar "HASH|NAME")
   <*> some (argument str (metavar "PATH..."))
 
 filesStatusParser :: Parser Command
@@ -113,7 +118,7 @@ filesStatusParser = pure FilesStatus
 
 commitParser :: Parser Command
 commitParser = CommitCmd
-  <$> argument (T.pack <$> str) (metavar "HASH")
+  <$> argument (T.pack <$> str) (metavar "HASH|NAME")
   <*> option (T.pack <$> str)
       ( short 'm'
       <> metavar "MESSAGE"
@@ -121,7 +126,7 @@ commitParser = CommitCmd
 
 reserveParser :: Parser Command
 reserveParser = ReserveCmd
-  <$> argument (T.pack <$> str) (metavar "HASH")
+  <$> argument (T.pack <$> str) (metavar "HASH|NAME")
   <*> argument (T.pack <$> str) (metavar "RESOURCE")
   <*> optional (option auto
       ( long "ttl"
@@ -135,7 +140,7 @@ reserveParser = ReserveCmd
 
 releaseParser :: Parser Command
 releaseParser = ReleaseCmd
-  <$> argument (T.pack <$> str) (metavar "HASH")
+  <$> argument (T.pack <$> str) (metavar "HASH|NAME")
   <*> argument (T.pack <$> str) (metavar "RESOURCE")
 
 reservationsParser :: Parser Command
@@ -146,11 +151,11 @@ listParser = pure List
 
 cleanupParser :: Parser Command
 cleanupParser = Cleanup
-  <$> argument (T.pack <$> str) (metavar "HASH")
+  <$> argument (T.pack <$> str) (metavar "HASH|NAME")
 
 teeParser :: Parser Command
 teeParser = Tee
-  <$> argument (T.pack <$> str) (metavar "HASH")
+  <$> argument (T.pack <$> str) (metavar "HASH|NAME")
 
 opts :: ParserInfo Command
 opts = info (commandParser <**> helper)
@@ -165,18 +170,19 @@ main = do
     putStrLn $ "{\"ok\":false,\"error\":" ++ show (show e) ++ "}"
     exitWith (ExitFailure 1)
 
+-- | Resolve name-or-hash for all commands except Init (which creates the agent).
 runCommand :: Command -> IO ()
-runCommand (Init mbHash)                     = cmdInit mbHash
-runCommand (Send hash msg ty target)        = cmdSend hash msg ty target
-runCommand (Read hash wait timeout from)     = cmdRead hash wait timeout from
-runCommand (Watch hash)                     = cmdWatch hash
-runCommand (FilesClaim hash paths shared)   = cmdFilesClaim hash paths shared
-runCommand (FilesUnclaim hash paths)        = cmdFilesUnclaim hash paths
-runCommand FilesStatus                      = cmdFilesStatus
-runCommand (CommitCmd hash msg)             = cmdCommit hash msg
-runCommand (ReserveCmd hash res ttl to)     = cmdReserve hash res ttl to
-runCommand (ReleaseCmd hash res)            = cmdRelease hash res
-runCommand ReservationsCmd                  = cmdReservations
-runCommand List                             = cmdList
-runCommand (Cleanup hash)                   = cmdCleanup hash
-runCommand (Tee hash)                       = cmdTee hash
+runCommand (Init mbHash mbName)              = cmdInit mbHash mbName
+runCommand (Send ref msg ty target)          = resolveAgent ref >>= \h -> cmdSend h msg ty target
+runCommand (Read ref wait timeout from)      = resolveAgent ref >>= \h -> cmdRead h wait timeout from
+runCommand (Watch ref)                       = resolveAgent ref >>= \h -> cmdWatch h
+runCommand (FilesClaim ref paths shared)     = resolveAgent ref >>= \h -> cmdFilesClaim h paths shared
+runCommand (FilesUnclaim ref paths)          = resolveAgent ref >>= \h -> cmdFilesUnclaim h paths
+runCommand FilesStatus                       = cmdFilesStatus
+runCommand (CommitCmd ref msg)               = resolveAgent ref >>= \h -> cmdCommit h msg
+runCommand (ReserveCmd ref res ttl to)       = resolveAgent ref >>= \h -> cmdReserve h res ttl to
+runCommand (ReleaseCmd ref res)              = resolveAgent ref >>= \h -> cmdRelease h res
+runCommand ReservationsCmd                   = cmdReservations
+runCommand List                              = cmdList
+runCommand (Cleanup ref)                     = resolveAgent ref >>= \h -> cmdCleanup h
+runCommand (Tee ref)                         = resolveAgent ref >>= \h -> cmdTee h
