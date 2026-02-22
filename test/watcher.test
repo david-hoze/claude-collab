@@ -1,0 +1,116 @@
+# =============================================================================
+# fsnotify watcher tests
+#
+# Run with: shelltest test/watcher.test --shell C:\Users\natanh\tools\PortableGit\usr\bin\bash.exe
+#
+# Tests:
+# - read --wait returns immediately when messages are already pending
+# - read --wait blocks until a new message arrives, then returns it
+# - read --wait returns empty on timeout when no messages arrive
+# - readRange stops at gaps (race condition fix)
+# =============================================================================
+
+# ---- SETUP: clean slate ----
+rm -rf .claude/agents && echo setup done
+<<<
+>>>
+setup done
+>>>= 0
+
+# ---- Init two agents ----
+claude-collab init agent_r 2>/dev/null | grep -o '"ok":true'
+<<<
+>>>
+"ok":true
+>>>= 0
+
+claude-collab init agent_s 2>/dev/null | grep -o '"ok":true'
+<<<
+>>>
+"ok":true
+>>>= 0
+
+# ---- Consume init messages so cursor is caught up ----
+claude-collab read agent_r >/dev/null 2>&1 && echo consumed
+<<<
+>>>
+consumed
+>>>= 0
+
+# ======================================================================
+# Test 1: read --wait returns immediately when messages are pending
+# ======================================================================
+
+claude-collab send agent_s "already here" --type chat 2>/dev/null | grep -o '"ok":true'
+<<<
+>>>
+"ok":true
+>>>= 0
+
+# --wait should return instantly since there's a pending message
+claude-collab read agent_r --wait --timeout 2 2>/dev/null | grep -o "already here"
+<<<
+>>>
+already here
+>>>= 0
+
+# ======================================================================
+# Test 2: read --wait blocks until message arrives
+# Send a message 1 second after starting --wait, verify it's received
+# ======================================================================
+
+(sleep 1 && claude-collab send agent_s "delayed msg" --type chat >/dev/null 2>&1) & claude-collab read agent_r --wait --timeout 5 2>/dev/null | grep -o "delayed msg"
+<<<
+>>>
+delayed msg
+>>>= 0
+
+# ======================================================================
+# Test 3: read --wait returns empty on timeout
+# ======================================================================
+
+claude-collab read agent_r --wait --timeout 2 2>/dev/null | grep -o '"messages":\[\]'
+<<<
+>>>
+"messages":[]
+>>>= 0
+
+# ======================================================================
+# Test 4: readRange stops at gaps
+# Create a gap by writing seq file ahead without creating the message file
+# ======================================================================
+
+# Send a normal message so there's something to read
+claude-collab send agent_s "before gap" --type chat 2>/dev/null | grep -o '"ok":true'
+<<<
+>>>
+"ok":true
+>>>= 0
+
+# Manually bump seq without writing the message file (simulates race condition)
+SEQ=$(cat .claude/agents/channel/.seq) && echo $((SEQ + 1)) > .claude/agents/channel/.seq && echo gap created
+<<<
+>>>
+gap created
+>>>= 0
+
+# Agent should see "before gap" but stop at the gap, not skip it
+claude-collab read agent_r 2>/dev/null | grep -o "before gap"
+<<<
+>>>
+before gap
+>>>= 0
+
+# Reading again should return empty (cursor stopped before the gap)
+claude-collab read agent_r 2>/dev/null | grep -o '"messages":\[\]'
+<<<
+>>>
+"messages":[]
+>>>= 0
+
+# ---- CLEANUP ----
+claude-collab cleanup agent_r >/dev/null 2>&1 && claude-collab cleanup agent_s >/dev/null 2>&1 && rm -rf .claude/agents && echo cleanup done
+<<<
+>>>
+cleanup done
+>>>= 0
