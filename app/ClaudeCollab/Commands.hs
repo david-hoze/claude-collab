@@ -553,17 +553,18 @@ tryReserve hash resource ttl renew = do
               ]
             return (Right ())
         | isExpired now existing -> do
-            -- Expired, steal it
-            printError $ "WARNING: Stale reservation from " ++ T.unpack (resHolder existing)
-              ++ " expired. Taking over."
-            let r = Reservation hash now ttl Nothing
-            writeReservations (Map.insert resource r reservations')
+            -- Expired, but don't steal — tell the agent to message the holder
+            let holder = resHolder existing
+            printError $ "BLOCKED: " ++ T.unpack resource ++ " is held by "
+              ++ T.unpack holder ++ " (TTL expired). Message them to coordinate "
+              ++ "— ask them to release, or to run your task while they have the resource."
             printJSON $ encode $ object
-              [ "ok"       .= True
+              [ "ok"       .= False
+              , "error"    .= ("stale_reservation" :: Text)
               , "resource" .= resource
-              , "ttl"      .= ttl
+              , "holder"   .= holder
               ]
-            return (Right ())
+            return (Left (holder, 0))
         | otherwise -> do
             -- Held by someone else, still valid
             let elapsed = realToFrac (diffUTCTime now (resAcquired existing)) :: Double

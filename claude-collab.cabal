@@ -13,6 +13,7 @@ executable claude-collab
                   , ClaudeCollab.Registry
                   , ClaudeCollab.Git
                   , ClaudeCollab.Commands
+                  , ClaudeCollab.Install
   build-depends:    base >= 4.17 && < 5
                   , aeson
                   , aeson-pretty

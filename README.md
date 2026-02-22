@@ -76,13 +76,18 @@ When two agents need to edit the same file, they co-claim it with `--shared`. Wh
 
 ## Setting up your project
 
-Once `claude-collab` is in your PATH, add this to your project's `CLAUDE.md`:
+Once `claude-collab` is in your PATH, run the install script from your project root:
 
-```markdown
-Read and follow the instructions in CLAUDE_COLLAB.md.
+```bash
+bash /path/to/claude-collab/install.sh
 ```
 
-Then copy [`docs/CLAUDE_COLLAB.md`](docs/CLAUDE_COLLAB.md) into your project root. This file contains the agent-facing instructions that teach Claude Code how to use the tool.
+This will:
+- Copy `CLAUDE_COLLAB.md` to your project root (agent-facing instructions)
+- Install Claude Code hooks into `.claude/hooks/` (auto-init, auto-claim, auto-cleanup)
+- Configure hooks in `.claude/settings.json`
+- Create `.claude/agents/resources.json` with defaults
+- Add a collaboration section to your `CLAUDE.md` (or create one)
 
 ## Running tests
 

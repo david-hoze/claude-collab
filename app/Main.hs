@@ -7,6 +7,7 @@ import System.Exit (exitWith, ExitCode(..))
 import Control.Exception (SomeException, catch)
 
 import ClaudeCollab.Commands
+import ClaudeCollab.Install (cmdInstall)
 import ClaudeCollab.Registry (resolveAgent)
 
 data Command
@@ -21,6 +22,7 @@ data Command
   | List
   | Cleanup Text
   | Tee Text
+  | Install
   deriving (Show)
 
 commandParser :: Parser Command
@@ -34,6 +36,7 @@ commandParser = hsubparser
   <> command "list" (info listParser (progDesc "List all agents"))
   <> command "cleanup" (info cleanupParser (progDesc "Clean up an agent"))
   <> command "tee" (info teeParser (progDesc "Tee stdin to stdout and log"))
+  <> command "install" (info installParser (progDesc "Install hooks and config into current repo"))
   )
 
 initParser :: Parser Command
@@ -107,6 +110,9 @@ teeParser :: Parser Command
 teeParser = Tee
   <$> argument (T.pack <$> str) (metavar "HASH|NAME")
 
+installParser :: Parser Command
+installParser = pure Install
+
 opts :: ParserInfo Command
 opts = info (commandParser <**> helper)
   ( fullDesc
@@ -133,3 +139,4 @@ runCommand ReservationsCmd                   = cmdReservations
 runCommand List                              = cmdList
 runCommand (Cleanup ref)                     = resolveAgent ref >>= \h -> cmdCleanup h
 runCommand (Tee ref)                         = resolveAgent ref >>= \h -> cmdTee h
+runCommand Install                           = cmdInstall
