@@ -8,7 +8,7 @@
 # - Agent A reads and DOES see messages from agent B
 # - Agent B reads and DOES see messages from agent A
 # - Agent B reads and does not see its own messages
-# - --from flag bypasses filter and shows all messages including own
+# - Cursor advances past own messages so they aren't re-read
 # =============================================================================
 
 # ---- SETUP: clean slate ----
@@ -97,22 +97,6 @@ claude-collab read agent_y 2>/dev/null | grep "msg from Y"
 <<<
 >>>
 >>>= 1
-
-# ======================================================================
-# --from flag: shows ALL messages including own
-# ======================================================================
-
-claude-collab read agent_x --from 0 2>/dev/null | grep -o "msg1 from X"
-<<<
->>>
-msg1 from X
->>>= 0
-
-claude-collab read agent_x --from 0 2>/dev/null | grep -o "msg from Y"
-<<<
->>>
-msg from Y
->>>= 0
 
 # ---- CLEANUP ----
 claude-collab cleanup agent_x >/dev/null 2>&1 && claude-collab cleanup agent_y >/dev/null 2>&1 && rm -rf .claude/agents && echo cleanup done

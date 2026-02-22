@@ -13,7 +13,7 @@ import ClaudeCollab.Types (MessageType(..))
 data Command
   = Init (Maybe Text) (Maybe Text)
   | Send Text Text MessageType (Maybe Text)
-  | Read Text Bool Int (Maybe Int)
+  | Read Text Bool Int
   | Watch Text
   | FilesClaim Text [FilePath] Bool
   | FilesUnclaim Text [FilePath]
@@ -86,10 +86,6 @@ readParser = Read
       <> value 60
       <> metavar "SECONDS"
       <> help "Timeout for --wait (default 60)" )
-  <*> optional (option auto
-      ( long "from"
-      <> metavar "SEQ"
-      <> help "Replay messages from this sequence number (ignores cursor)" ))
 
 watchParser :: Parser Command
 watchParser = Watch
@@ -174,7 +170,7 @@ main = do
 runCommand :: Command -> IO ()
 runCommand (Init mbHash mbName)              = cmdInit mbHash mbName
 runCommand (Send ref msg ty target)          = resolveAgent ref >>= \h -> cmdSend h msg ty target
-runCommand (Read ref wait timeout from)      = resolveAgent ref >>= \h -> cmdRead h wait timeout from
+runCommand (Read ref wait timeout)            = resolveAgent ref >>= \h -> cmdRead h wait timeout
 runCommand (Watch ref)                       = resolveAgent ref >>= \h -> cmdWatch h
 runCommand (FilesClaim ref paths shared)     = resolveAgent ref >>= \h -> cmdFilesClaim h paths shared
 runCommand (FilesUnclaim ref paths)          = resolveAgent ref >>= \h -> cmdFilesUnclaim h paths

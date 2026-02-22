@@ -83,8 +83,6 @@ Each agent has a cursor file at `.claude/agents/<hash>/cursor` containing a plai
 
 - **On init**: cursor is set to current `.seq`. The agent starts seeing messages sent after it joined.
 - **On read**: cursor advances to the latest `.seq`, regardless of whether messages were returned (own messages are filtered but still advance the cursor).
-- **On `--from N`**: cursor is NOT touched. This is a replay/debug feature that reads from a specific seq without side effects.
-
 ## Agent Name Resolution
 
 Agents can register with a human-readable name via `claude-collab init --name <name>`. Names are stored in `registry.json` in the `agentName` field.
@@ -103,9 +101,31 @@ The channel uses a mkdir-based lock (`channelDir/.lock/`). `mkdir` is atomic on 
 
 The lock only protects the seq increment. It is NOT held during message file writes or reads. This keeps contention low — the critical section is just: read int, write int+1.
 
+## Waiting for Messages
+
+`readMessagesWait` uses fsnotify (OS-level file watching) to detect new message files:
+
+1. Check for messages immediately — if any, return them
+2. Start an fsnotify watcher on the channel directory, filtering for message files (6-digit `.json`)
+3. Start a fallback poll thread that signals every 5 seconds (catches events fsnotify might miss)
+4. Start a timeout thread
+5. On each signal: check for messages, return if found, otherwise continue waiting
+6. On timeout: do one final check and return whatever is available
+
+The `watch` command uses `withWatcherForever` — same fsnotify setup but runs indefinitely, calling a callback for each new message.
+
+### Race Condition Fix
+
+`readRange` stops at the first gap (missing or unreadable file) rather than skipping over it. This prevents a race where:
+
+1. Agent A increments seq to N and releases the lock
+2. Agent B reads seq=N, tries to read file N — file doesn't exist yet (A hasn't written it)
+3. Old behavior: B would skip file N and advance cursor past it — message permanently lost
+4. New behavior: B stops at N-1, cursor stays at N-1, next read retries file N
+
 ## Known Limitations
 
-- **Init cursor**: a message sent just before an agent inits is invisible to that agent via normal `read`, because init sets cursor to current seq. Use `--from 0` to recover missed messages.
+- **Init cursor**: a message sent just before an agent inits is invisible to that agent via normal `read`, because init sets cursor to current seq.
 - **No garbage collection**: message files accumulate forever. A future `prune` command could delete messages older than N or below all agents' cursors.
 - **No message delivery guarantee**: if an agent never reads, messages pile up. There's no backpressure or notification mechanism beyond polling.
 - **Single-directory scope**: the channel lives in `.claude/agents/` relative to CWD. Agents must run from the same directory to share a channel.

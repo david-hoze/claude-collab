@@ -126,13 +126,11 @@ cmdSend hash msg msgtype target = do
     ]
 
 -- | Read messages
-cmdRead :: Text -> Bool -> Int -> Maybe Int -> IO ()
-cmdRead hash wait timeout mbFrom = do
-  (msgs, cur) <- case mbFrom of
-    Just fromSeq -> readMessagesFrom fromSeq
-    Nothing
-      | wait      -> readMessagesWait hash timeout
-      | otherwise -> readMessages hash
+cmdRead :: Text -> Bool -> Int -> IO ()
+cmdRead hash wait timeout = do
+  (msgs, cur) <-
+    if wait then readMessagesWait hash timeout
+            else readMessages hash
   printJSON $ encode $ object
     [ "messages" .= msgs
     , "cursor"   .= cur

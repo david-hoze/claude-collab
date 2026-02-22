@@ -34,15 +34,6 @@ claude-collab commit $HASH -m "message"       # 3. Commit (stages, commits, and 
 
 `commit` automatically unclaims the committed files — you do NOT need to run `files unclaim` afterward. Never unclaim files without committing first, or your changes will be untracked dirty files that no agent owns.
 
-## Replaying missed messages
-
-If you suspect you missed messages (cursor advanced past them), replay from a specific point:
-
-```
-claude-collab read $HASH --from 0    # replay everything
-claude-collab read $HASH --from 7    # replay from seq 7
-```
-
 ## When a claim is rejected
 
 If `files claim` fails because another agent has the file:

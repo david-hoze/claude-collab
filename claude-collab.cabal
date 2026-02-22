@@ -12,6 +12,7 @@ executable claude-collab
                   , ClaudeCollab.Lock
                   , ClaudeCollab.Registry
                   , ClaudeCollab.Channel
+                  , ClaudeCollab.Watcher
                   , ClaudeCollab.Git
                   , ClaudeCollab.Commands
   build-depends:    base >= 4.17 && < 5
@@ -42,6 +43,7 @@ test-suite claude-collab-test
                   , ClaudeCollab.Lock
                   , ClaudeCollab.Registry
                   , ClaudeCollab.Channel
+                  , ClaudeCollab.Watcher
                   , ClaudeCollab.Git
                   , ClaudeCollab.Commands
   build-depends:    base >= 4.17 && < 5
