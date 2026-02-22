@@ -10,25 +10,41 @@ import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
 import System.Directory (createDirectory, getModificationTime, removeDirectory)
 
 -- | Acquire a mkdir-based lock. Spins every 20ms, force-breaks after staleSeconds.
+-- Hard wall-clock timeout at 3x staleSeconds to prevent infinite spin
+-- (e.g. on Windows where lock dir mtime can be refreshed by the OS).
 acquireLock :: FilePath -> Double -> IO ()
-acquireLock lockPath staleSeconds = go
+acquireLock lockPath staleSeconds = do
+  deadline <- getCurrentTime
+  let timeoutSeconds = staleSeconds * 3
+  go deadline timeoutSeconds
   where
-    go = do
+    go startTime timeoutSecs = do
       result <- try (createDirectory lockPath) :: IO (Either SomeException ())
       case result of
         Right () -> return ()  -- acquired
         Left _   -> do
-          -- Check if lock is stale
-          mtime <- tryGetMtime lockPath
           now <- getCurrentTime
-          case mtime of
-            Just t | realToFrac (diffUTCTime now t) > staleSeconds -> do
-              -- Stale lock, force-break
+          let elapsed = realToFrac (diffUTCTime now startTime) :: Double
+          if elapsed > timeoutSecs
+            then do
+              -- Hard timeout — force-break and take it
               _ <- try (removeDirectory lockPath) :: IO (Either SomeException ())
-              go
-            _ -> do
-              threadDelay 20000  -- 20ms
-              go
+              result2 <- try (createDirectory lockPath) :: IO (Either SomeException ())
+              case result2 of
+                Right () -> return ()
+                Left _   -> error $ "acquireLock: failed to acquire " ++ lockPath
+                  ++ " after " ++ show (round timeoutSecs :: Int) ++ "s"
+            else do
+              -- Check if lock is stale
+              mtime <- tryGetMtime lockPath
+              case mtime of
+                Just t | realToFrac (diffUTCTime now t) > staleSeconds -> do
+                  -- Stale lock, force-break
+                  _ <- try (removeDirectory lockPath) :: IO (Either SomeException ())
+                  go startTime timeoutSecs
+                _ -> do
+                  threadDelay 20000  -- 20ms
+                  go startTime timeoutSecs
 
     tryGetMtime :: FilePath -> IO (Maybe UTCTime)
     tryGetMtime p = do
