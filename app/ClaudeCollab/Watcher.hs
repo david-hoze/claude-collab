@@ -9,6 +9,7 @@ import Control.Concurrent (MVar, newEmptyMVar, takeMVar, tryPutMVar,
 import Control.Exception (SomeException, try)
 import Control.Monad (void, forever)
 import Data.Char (isDigit)
+import Data.Time (getCurrentTime, diffUTCTime)
 import System.FilePath (takeFileName)
 import System.FSNotify (eventPath, watchDir, withManager)
 
@@ -46,10 +47,13 @@ withWatcher dir timeoutSec action = do
       threadDelay (timeoutSec * 1000000)
       void (tryPutMVar signal ())
 
-    -- Main loop
-    let loop remainingUs = do
+    -- Main loop — use wall clock to track remaining time
+    startTime <- getCurrentTime
+    let loop = do
           takeMVar signal
-          if remainingUs <= 0
+          now <- getCurrentTime
+          let elapsed = realToFrac (diffUTCTime now startTime) :: Double
+          if elapsed >= fromIntegral timeoutSec
             then do
               cleanup stopWatch fallbackTid timeoutTid
               action  -- one last try
@@ -59,9 +63,9 @@ withWatcher dir timeoutSec action = do
                 then do
                   cleanup stopWatch fallbackTid timeoutTid
                   return (msgs, cur)
-                else loop (remainingUs - 5000000)  -- approximate
+                else loop  -- self-wake (own messages filtered), keep waiting
 
-    loop (timeoutSec * 1000000)
+    loop
   where
     cleanup stopWatch fallbackTid timeoutTid = do
       _ <- stopWatch

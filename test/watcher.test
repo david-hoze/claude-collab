@@ -7,6 +7,7 @@
 # - read --wait returns immediately when messages are already pending
 # - read --wait blocks until a new message arrives, then returns it
 # - read --wait returns empty on timeout when no messages arrive
+# - read --wait skips self-wake (own send) and waits for real message
 # - readRange stops at gaps (race condition fix)
 # =============================================================================
 
@@ -76,7 +77,27 @@ claude-collab read agent_r --wait --timeout 2 2>/dev/null | grep -o '"messages":
 >>>= 0
 
 # ======================================================================
-# Test 4: readRange stops at gaps
+# Test 4: read --wait skips self-wake and waits for real message
+# agent_r sends its own message (which triggers fsnotify), but --wait
+# should NOT return empty — it should keep waiting until agent_s sends
+# ======================================================================
+
+# agent_r sends own message at 0.5s (triggers fsnotify self-wake),
+# agent_s sends real message at 2s — --wait should return only the real one
+(sleep 0.5 && claude-collab send agent_r "my own msg" --type chat >/dev/null 2>&1; sleep 1.5 && claude-collab send agent_s "real msg for r" --type chat >/dev/null 2>&1) & claude-collab read agent_r --wait --timeout 5 2>/dev/null | grep -o "real msg for r"
+<<<
+>>>
+real msg for r
+>>>= 0
+
+# Verify agent_r did NOT see its own message
+claude-collab read agent_r 2>/dev/null | grep "my own msg"
+<<<
+>>>
+>>>= 1
+
+# ======================================================================
+# Test 5: readRange stops at gaps
 # Create a gap by writing seq file ahead without creating the message file
 # ======================================================================
 
