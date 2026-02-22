@@ -11,8 +11,6 @@ executable claude-collab
   other-modules:    ClaudeCollab.Types
                   , ClaudeCollab.Lock
                   , ClaudeCollab.Registry
-                  , ClaudeCollab.Channel
-                  , ClaudeCollab.Watcher
                   , ClaudeCollab.Git
                   , ClaudeCollab.Commands
   build-depends:    base >= 4.17 && < 5
@@ -22,7 +20,6 @@ executable claude-collab
                   , containers
                   , directory
                   , filepath
-                  , fsnotify
                   , optparse-applicative
                   , process
                   , text
@@ -42,8 +39,6 @@ test-suite claude-collab-test
   other-modules:    ClaudeCollab.Types
                   , ClaudeCollab.Lock
                   , ClaudeCollab.Registry
-                  , ClaudeCollab.Channel
-                  , ClaudeCollab.Watcher
                   , ClaudeCollab.Git
                   , ClaudeCollab.Commands
   build-depends:    base >= 4.17 && < 5
@@ -53,7 +48,6 @@ test-suite claude-collab-test
                   , containers
                   , directory
                   , filepath
-                  , fsnotify
                   , optparse-applicative
                   , process
                   , text

@@ -1,8 +1,5 @@
 module ClaudeCollab.Commands
   ( cmdInit
-  , cmdSend
-  , cmdRead
-  , cmdWatch
   , cmdFilesClaim
   , cmdFilesUnclaim
   , cmdFilesStatus
@@ -34,7 +31,6 @@ import System.FilePath ((<.>))
 import System.IO (hFlush, hPutStrLn, stderr, stdin, stdout)
 import qualified Data.ByteString.Char8 as BS8
 
-import ClaudeCollab.Channel
 import ClaudeCollab.Git
 import ClaudeCollab.Lock
 import ClaudeCollab.Registry
@@ -76,7 +72,6 @@ cmdInit mbHash mbName = do
     Just h  -> pure h
     Nothing -> generateHash
   -- Create directories
-  createDirectoryIfMissing True channelDir
   createDirectoryIfMissing True (agentDir hash)
 
   -- Create resources.json with defaults if it doesn't exist
@@ -91,10 +86,6 @@ cmdInit mbHash mbName = do
     then BL.writeFile reservationsPath (encode (Map.empty :: Reservations))
     else return ()
 
-  -- Initialize cursor to current seq
-  cur <- readSeq
-  writeCursor hash cur
-
   -- Add to registry
   now <- getCurrentTime
   let info = AgentInfo
@@ -105,43 +96,12 @@ cmdInit mbHash mbName = do
         }
   modifyRegistry $ \reg -> return (Map.insert hash info reg, ())
 
-  -- Send join message
-  let displayName = maybe hash (\n -> n <> " (" <> hash <> ")") mbName
-  _ <- sendMessage hash Status ("Agent " <> displayName <> " joined") Nothing
-
   -- Print result
   printJSON $ encode $ object $
     [ "ok"        .= True
     , "hash"      .= hash
     , "agent_dir" .= agentDir hash
     ] ++ maybe [] (\n -> ["name" .= n]) mbName
-
--- | Send a message
-cmdSend :: Text -> Text -> MessageType -> Maybe Text -> IO ()
-cmdSend hash msg msgtype target = do
-  n <- sendMessage hash msgtype msg target
-  printJSON $ encode $ object
-    [ "ok"  .= True
-    , "seq" .= n
-    ]
-
--- | Read messages
-cmdRead :: Text -> Bool -> Int -> IO ()
-cmdRead hash wait timeout = do
-  (msgs, cur) <-
-    if wait then readMessagesWait hash timeout
-            else readMessages hash
-  printJSON $ encode $ object
-    [ "messages" .= msgs
-    , "cursor"   .= cur
-    ]
-
--- | Watch for messages (long-running)
-cmdWatch :: Text -> IO ()
-cmdWatch hash = do
-  watchMessages hash $ \msg -> do
-    BL8.putStrLn (encode msg)
-    hFlush stdout
 
 -- | Claim files
 cmdFilesClaim :: Text -> [FilePath] -> Bool -> IO ()
@@ -195,18 +155,6 @@ cmdFilesClaim hash paths shared = do
   let updatedReg = Map.insert hash updatedInfo reg
   writeRegistry updatedReg
 
-  -- Send channel messages for newly claimed files
-  mapM_ (\p -> sendMessage hash Claim ("Claiming " <> T.pack p) (Just $ T.pack p)) claimed
-
-  -- Send channel messages for co-claimed files
-  mapM_ (\p -> do
-    let claimers = findClaimers p (Map.delete hash reg)
-    let otherHashes = T.intercalate ", " (map fst claimers)
-    sendMessage hash Claim
-      ("Co-claiming " <> T.pack p <> " (shared with " <> otherHashes <> ")")
-      (Just $ T.pack p)
-    ) sharedFiles
-
   -- Print result
   let ok = null rejected
   printJSON $ encode $ object
@@ -241,9 +189,6 @@ cmdFilesUnclaim hash paths = do
         let newClaimed = foldr (\p m -> Map.delete (normalizeSlashes p) m) (agentClaimed info) paths
         let newInfo = info { agentClaimed = newClaimed }
         return (Map.insert hash newInfo reg, ())
-
-  -- Send unclaim messages
-  mapM_ (\p -> sendMessage hash Unclaim ("Unclaimed " <> T.pack p) (Just $ T.pack p)) paths
 
   printJSON $ encode $ object
     [ "ok"        .= True
@@ -372,12 +317,6 @@ doStage hash commitMsg dirtyFiles coClaimedInfo reg myInfo = do
             , not (allCoClaimersStaged (fp, others))
             ]
 
-      -- Send channel message
-      let waitHashes = T.intercalate ", " $ concatMap snd $ Map.toList waitingOn
-      _ <- sendMessage hash Staged
-        ("Staged " <> T.pack (show (length dirtyFiles)) <> " files, waiting on " <> waitHashes)
-        Nothing
-
       printJSON $ encode $ object
         [ "ok"         .= True
         , "staged"     .= map T.pack dirtyFiles
@@ -408,11 +347,6 @@ doFullCommit hash commitMsg dirtyFiles coClaimedInfo reg myInfo = do
             -- Post-commit cleanup
             let newReg = postCommitCleanup hash dirtyFiles coClaimedInfo reg myInfo
             writeRegistry newReg
-
-            -- Send channel message
-            _ <- sendMessage hash Commit
-              ("Committed: " <> shortHash)
-              (Just $ T.intercalate ", " $ map T.pack dirtyFiles)
 
             printJSON $ encode $ object
               [ "ok"        .= True
@@ -503,12 +437,6 @@ cmdCleanup hash = do
     let mine = Map.filter (\r -> resHolder r == hash) reservations
     let reservations' = Map.difference reservations mine
     writeReservations reservations'
-    mapM_ (\res -> sendMessage hash Release ("Released " <> res) (Just res))
-          (Map.keys mine)
-
-  -- Send leave message
-  _ <- sendMessage hash Status ("Agent " <> hash <> " left") Nothing
-
   -- Remove agent directory
   _ <- try (removeDirectoryRecursive (agentDir hash)) :: IO (Either SomeException ())
 
@@ -596,19 +524,16 @@ tryReserve hash resource ttl renew = do
     now <- getCurrentTime
     reservations <- readReservations
     -- Atomically release before re-reserving (avoids race with other agents)
-    reservations' <- if renew
+    let reservations' = if renew
           then case Map.lookup resource reservations of
-            Just existing | resHolder existing == hash -> do
-              _ <- sendMessage hash Release ("Released " <> resource) (Just resource)
-              return (Map.delete resource reservations)
-            _ -> return reservations
-          else return reservations
+            Just existing | resHolder existing == hash -> Map.delete resource reservations
+            _ -> reservations
+          else reservations
     case Map.lookup resource reservations' of
       Nothing -> do
         -- Unreserved, take it
         let r = Reservation hash now ttl Nothing
         writeReservations (Map.insert resource r reservations')
-        _ <- sendMessage hash Reserve ("Reserved " <> resource) (Just resource)
         printJSON $ encode $ object
           [ "ok"       .= True
           , "resource" .= resource
@@ -633,9 +558,6 @@ tryReserve hash resource ttl renew = do
               ++ " expired. Taking over."
             let r = Reservation hash now ttl Nothing
             writeReservations (Map.insert resource r reservations')
-            _ <- sendMessage hash Reserve
-              ("Reserved " <> resource <> " (expired from " <> resHolder existing <> ")")
-              (Just resource)
             printJSON $ encode $ object
               [ "ok"       .= True
               , "resource" .= resource
@@ -663,7 +585,6 @@ cmdRelease hash resource = do
       Just existing
         | resHolder existing == hash -> do
             writeReservations (Map.delete resource reservations)
-            _ <- sendMessage hash Release ("Released " <> resource) (Just resource)
             printJSON $ encode $ object
               [ "ok"       .= True
               , "resource" .= resource

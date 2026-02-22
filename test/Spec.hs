@@ -17,7 +17,6 @@ import System.Process (readProcessWithExitCode)
 
 import ClaudeCollab.Types
 import ClaudeCollab.Registry
-import ClaudeCollab.Channel
 import ClaudeCollab.Lock
 
 -- Simple test framework
@@ -76,7 +75,6 @@ main = withTestDir $ \_ -> do
   putStrLn "========================"
   results <- sequence
     [ section "Lock" lockTests
-    , section "Channel" channelTests
     , section "Registry" registryTests
     , section "Reservations" reservationTests
     , section "Integration" integrationTests
@@ -110,55 +108,6 @@ lockTests = do
         withMkdirLock lockPath 5.0 $ do
           exists <- doesDirectoryExist lockPath
           assert exists "lock should exist inside bracket"
-    ]
-  return (length results, length (filter id results))
-
--- Channel tests
-channelTests :: IO (Int, Int)
-channelTests = do
-  -- Setup channel dir
-  createDirectoryIfMissing True channelDir
-  createDirectoryIfMissing True (agentDir "test1")
-  createDirectoryIfMissing True (agentDir "test2")
-
-  -- Initialize cursors
-  writeCursor "test1" 0
-  writeCursor "test2" 0
-
-  results <- sequence
-    [ runTest "send message and read seq" $ do
-        n <- sendMessage "test1" Chat "hello world" Nothing
-        assert (n > 0) $ "expected positive seq, got " ++ show n
-
-    , runTest "read message round-trip" $ do
-        n <- sendMessage "test1" Chat "test message" Nothing
-        -- Read the message file directly
-        bs <- BS.readFile (messageFilePath n)
-        case eitherDecodeStrict' bs :: Either String Message of
-          Left err  -> return $ Fail $ "decode error: " ++ err
-          Right msg -> assert (msgMsg msg == "test message" && msgFrom msg == "test1")
-            "message content should match"
-
-    , runTest "read returns new messages" $ do
-        -- Reset cursor
-        writeCursor "test2" 0
-        latest <- readSeq
-        writeCursor "test2" (latest - 1)  -- Position just before last message
-        (msgs, _) <- readMessages "test2"
-        assert (not (null msgs)) "should have at least one message"
-
-    , runTest "two sends get distinct sequence numbers" $ do
-        n1 <- sendMessage "test1" Chat "msg1" Nothing
-        n2 <- sendMessage "test1" Chat "msg2" Nothing
-        assert (n2 == n1 + 1) $ "expected consecutive seqs, got " ++ show n1 ++ " and " ++ show n2
-
-    , runTest "send with target field" $ do
-        n <- sendMessage "test1" Claim "claiming file" (Just "src/foo.hs")
-        bs <- BS.readFile (messageFilePath n)
-        case eitherDecodeStrict' bs :: Either String Message of
-          Left err  -> return $ Fail $ "decode error: " ++ err
-          Right msg -> assert (msgTarget msg == Just "src/foo.hs")
-            "target field should be set"
     ]
   return (length results, length (filter id results))
 
@@ -324,11 +273,9 @@ reservationTests = do
     ]
   return (length results, length (filter id results))
 
--- Integration tests (using the CLI binary via process calls)
+-- Integration tests (using the command functions directly)
 integrationTests :: IO (Int, Int)
 integrationTests = do
-  -- These tests exercise the command functions directly
-  createDirectoryIfMissing True channelDir
   createDirectoryIfMissing True ".claude/agents"
 
   -- Reset registry for clean integration tests

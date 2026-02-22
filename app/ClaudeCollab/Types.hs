@@ -1,67 +1,12 @@
 module ClaudeCollab.Types where
 
 import Data.Aeson
-import Data.Aeson.Types (prependFailure, typeMismatch)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time (UTCTime)
 import GHC.Generics (Generic)
-
--- | Message types for the channel
-data MessageType = Chat | Status | Claim | Unclaim | Staged | Commit | Reserve | Release
-  deriving (Show, Eq, Generic)
-
-instance ToJSON MessageType where
-  toJSON Chat    = String "chat"
-  toJSON Status  = String "status"
-  toJSON Claim   = String "claim"
-  toJSON Unclaim = String "unclaim"
-  toJSON Staged  = String "staged"
-  toJSON Commit  = String "commit"
-  toJSON Reserve = String "reserve"
-  toJSON Release = String "release"
-
-instance FromJSON MessageType where
-  parseJSON (String "chat")    = pure Chat
-  parseJSON (String "status")  = pure Status
-  parseJSON (String "claim")   = pure Claim
-  parseJSON (String "unclaim") = pure Unclaim
-  parseJSON (String "staged")  = pure Staged
-  parseJSON (String "commit")  = pure Commit
-  parseJSON (String "reserve") = pure Reserve
-  parseJSON (String "release") = pure Release
-  parseJSON invalid = prependFailure "parsing MessageType failed, "
-                        (typeMismatch "String" invalid)
-
--- | A channel message
-data Message = Message
-  { msgSeq    :: Int
-  , msgTs     :: UTCTime
-  , msgFrom   :: Text
-  , msgType   :: MessageType
-  , msgMsg    :: Text
-  , msgTarget :: Maybe Text
-  } deriving (Show, Eq, Generic)
-
-instance ToJSON Message where
-  toJSON Message{..} = object $
-    [ "seq"  .= msgSeq
-    , "ts"   .= msgTs
-    , "from" .= msgFrom
-    , "type" .= msgType
-    , "msg"  .= msgMsg
-    ] ++ maybe [] (\t -> ["target" .= t]) msgTarget
-
-instance FromJSON Message where
-  parseJSON = withObject "Message" $ \v -> Message
-    <$> v .: "seq"
-    <*> v .: "ts"
-    <*> v .: "from"
-    <*> v .: "type"
-    <*> v .: "msg"
-    <*> v .:? "target"
 
 -- | Per-file claim state
 data ClaimState = ClaimState
@@ -160,9 +105,6 @@ exitGitFailed   = 3
 agentsBaseDir :: FilePath
 agentsBaseDir = ".claude/agents"
 
-channelDir :: FilePath
-channelDir = agentsBaseDir ++ "/channel"
-
 registryPath :: FilePath
 registryPath = agentsBaseDir ++ "/registry.json"
 
@@ -172,23 +114,14 @@ resourcesPath = agentsBaseDir ++ "/resources.json"
 reservationsPath :: FilePath
 reservationsPath = agentsBaseDir ++ "/reservations.json"
 
-channelLockDir :: FilePath
-channelLockDir = channelDir ++ "/.lock"
-
 gitLockDir :: FilePath
 gitLockDir = agentsBaseDir ++ "/.git-lock"
 
 reserveLockDir :: FilePath
 reserveLockDir = agentsBaseDir ++ "/.reserve-lock"
 
-seqFile :: FilePath
-seqFile = channelDir ++ "/.seq"
-
 agentDir :: Text -> FilePath
 agentDir hash = agentsBaseDir ++ "/" ++ T.unpack hash
-
-cursorFile :: Text -> FilePath
-cursorFile hash = agentDir hash ++ "/cursor"
 
 outputLog :: Text -> FilePath
 outputLog hash = agentDir hash ++ "/output.log"

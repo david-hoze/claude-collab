@@ -8,13 +8,9 @@ import Control.Exception (SomeException, catch)
 
 import ClaudeCollab.Commands
 import ClaudeCollab.Registry (resolveAgent)
-import ClaudeCollab.Types (MessageType(..))
 
 data Command
   = Init (Maybe Text) (Maybe Text)
-  | Send Text Text MessageType (Maybe Text)
-  | Read Text Bool Int
-  | Watch Text
   | FilesClaim Text [FilePath] Bool
   | FilesUnclaim Text [FilePath]
   | FilesStatus
@@ -27,24 +23,9 @@ data Command
   | Tee Text
   deriving (Show)
 
-parseMessageType :: ReadM MessageType
-parseMessageType = eitherReader $ \s -> case s of
-  "chat"    -> Right Chat
-  "status"  -> Right Status
-  "claim"   -> Right Claim
-  "unclaim" -> Right Unclaim
-  "staged"  -> Right Staged
-  "commit"  -> Right Commit
-  "reserve" -> Right Reserve
-  "release" -> Right Release
-  _         -> Left $ "Unknown message type: " ++ s
-
 commandParser :: Parser Command
 commandParser = hsubparser
   ( command "init" (info initParser (progDesc "Initialize an agent"))
-  <> command "send" (info sendParser (progDesc "Send a channel message"))
-  <> command "read" (info readParser (progDesc "Read channel messages"))
-  <> command "watch" (info watchParser (progDesc "Watch channel messages"))
   <> command "files" (info filesParser (progDesc "File claim operations"))
   <> command "commit" (info commitParser (progDesc "Commit claimed files"))
   <> command "reserve" (info reserveParser (progDesc "Reserve a shared resource"))
@@ -62,34 +43,6 @@ initParser = Init
       ( long "name"
       <> metavar "NAME"
       <> help "Human-readable name for this agent (can be used instead of hash)" ))
-
-sendParser :: Parser Command
-sendParser = Send
-  <$> argument (T.pack <$> str) (metavar "HASH|NAME")
-  <*> argument (T.pack <$> str) (metavar "MESSAGE")
-  <*> option parseMessageType
-      ( long "type"
-      <> value Chat
-      <> metavar "TYPE"
-      <> help "Message type: chat|status|claim|unclaim|staged|commit" )
-  <*> optional (option (T.pack <$> str)
-      ( long "target"
-      <> metavar "FILE"
-      <> help "Target file" ))
-
-readParser :: Parser Command
-readParser = Read
-  <$> argument (T.pack <$> str) (metavar "HASH|NAME")
-  <*> switch (long "wait" <> help "Wait for new messages")
-  <*> option auto
-      ( long "timeout"
-      <> value 60
-      <> metavar "SECONDS"
-      <> help "Timeout for --wait (default 60)" )
-
-watchParser :: Parser Command
-watchParser = Watch
-  <$> argument (T.pack <$> str) (metavar "HASH|NAME")
 
 filesParser :: Parser Command
 filesParser = hsubparser
@@ -170,9 +123,6 @@ main = do
 -- | Resolve name-or-hash for all commands except Init (which creates the agent).
 runCommand :: Command -> IO ()
 runCommand (Init mbHash mbName)              = cmdInit mbHash mbName
-runCommand (Send ref msg ty target)          = resolveAgent ref >>= \h -> cmdSend h msg ty target
-runCommand (Read ref wait timeout)            = resolveAgent ref >>= \h -> cmdRead h wait timeout
-runCommand (Watch ref)                       = resolveAgent ref >>= \h -> cmdWatch h
 runCommand (FilesClaim ref paths shared)     = resolveAgent ref >>= \h -> cmdFilesClaim h paths shared
 runCommand (FilesUnclaim ref paths)          = resolveAgent ref >>= \h -> cmdFilesUnclaim h paths
 runCommand FilesStatus                       = cmdFilesStatus
