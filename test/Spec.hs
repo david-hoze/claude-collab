@@ -280,6 +280,47 @@ reservationTests = do
           Nothing -> return $ Fail "reservation not found"
           Just rv -> assert (resHolder rv /= "agent2")
             "agent2 should not hold the reservation"
+
+    , runTest "renew atomically releases and re-reserves" $ do
+        now <- getCurrentTime
+        -- Agent1 holds the resource
+        let r = Reservation "agent1" now 300 Nothing
+        writeTestReservations (Map.singleton "test" r)
+        -- Simulate what tryReserve does with renew=True:
+        -- atomically delete agent1's reservation, then re-reserve
+        res <- readTestReservations
+        let res' = case Map.lookup "test" res of
+              Just existing | resHolder existing == "agent1" -> Map.delete "test" res
+              _ -> res
+        -- Now the resource should be unreserved
+        let unreserved = not (Map.member "test" res')
+        -- Re-reserve with fresh TTL
+        let r2 = Reservation "agent1" now 600 Nothing
+        let res'' = Map.insert "test" r2 res'
+        writeTestReservations res''
+        final <- readTestReservations
+        case Map.lookup "test" final of
+          Nothing -> return $ Fail "reservation not found after renew"
+          Just rv -> assert (unreserved && resHolder rv == "agent1" && resTtl rv == 600)
+            "should have been released then re-reserved with new TTL"
+
+    , runTest "reserve without renew refreshes TTL for same agent" $ do
+        now <- getCurrentTime
+        let r = Reservation "agent1" now 300 Nothing
+        writeTestReservations (Map.singleton "test" r)
+        -- Simulate what tryReserve does with renew=False (same holder -> refresh):
+        res <- readTestReservations
+        case Map.lookup "test" res of
+          Nothing -> return $ Fail "reservation not found"
+          Just existing | resHolder existing == "agent1" -> do
+            let r2 = existing { resAcquired = now, resTtl = 600 }
+            writeTestReservations (Map.insert "test" r2 res)
+            final <- readTestReservations
+            case Map.lookup "test" final of
+              Nothing -> return $ Fail "reservation not found after refresh"
+              Just rv -> assert (resHolder rv == "agent1" && resTtl rv == 600)
+                "should have refreshed TTL without releasing"
+          Just _ -> return $ Fail "unexpected holder"
     ]
   return (length results, length (filter id results))
 

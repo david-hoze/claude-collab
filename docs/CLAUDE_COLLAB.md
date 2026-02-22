@@ -100,11 +100,19 @@ Run `claude-collab reservations` to check what's available.
 Before running tests, builds, or package installs:
 ```
 
-claude-collab reserve $HASH test npm test claude-collab release $HASH test
+claude-collab reserve $HASH test
+npm test
+claude-collab release $HASH test
 
 ```
 
 If the resource is busy, the command waits until it's free. Always release when done.
+
+If you need to release and immediately re-reserve (e.g., running tests again), use `--renew` to do it atomically:
+```
+claude-collab reserve $HASH test --renew
+```
+This avoids a race condition where another agent grabs the resource between your `release` and `reserve`.
 
 ## Sharing test and build results
 

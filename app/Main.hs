@@ -19,7 +19,7 @@ data Command
   | FilesUnclaim Text [FilePath]
   | FilesStatus
   | CommitCmd Text Text
-  | ReserveCmd Text Text (Maybe Int) Int
+  | ReserveCmd Text Text (Maybe Int) Int Bool
   | ReleaseCmd Text Text
   | ReservationsCmd
   | List
@@ -133,6 +133,7 @@ reserveParser = ReserveCmd
       <> value 30
       <> metavar "SECONDS"
       <> help "Timeout waiting for resource (default 30)" )
+  <*> switch (long "renew" <> help "Atomically release before re-reserving (avoids race condition)")
 
 releaseParser :: Parser Command
 releaseParser = ReleaseCmd
@@ -176,7 +177,7 @@ runCommand (FilesClaim ref paths shared)     = resolveAgent ref >>= \h -> cmdFil
 runCommand (FilesUnclaim ref paths)          = resolveAgent ref >>= \h -> cmdFilesUnclaim h paths
 runCommand FilesStatus                       = cmdFilesStatus
 runCommand (CommitCmd ref msg)               = resolveAgent ref >>= \h -> cmdCommit h msg
-runCommand (ReserveCmd ref res ttl to)       = resolveAgent ref >>= \h -> cmdReserve h res ttl to
+runCommand (ReserveCmd ref res ttl to rel)    = resolveAgent ref >>= \h -> cmdReserve h res ttl to rel
 runCommand (ReleaseCmd ref res)              = resolveAgent ref >>= \h -> cmdRelease h res
 runCommand ReservationsCmd                   = cmdReservations
 runCommand List                              = cmdList

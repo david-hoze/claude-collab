@@ -46,7 +46,7 @@ claude-collab files claim <hash> <path> [<path>...] [--shared]
 claude-collab files unclaim <hash> <path> [<path>...]
 claude-collab files status
 claude-collab commit <hash> -m <message>
-claude-collab reserve <hash> <resource> [--ttl SECONDS] [--timeout SECONDS]
+claude-collab reserve <hash> <resource> [--ttl SECONDS] [--timeout SECONDS] [--renew]
 claude-collab release <hash> <resource>
 claude-collab reservations
 claude-collab list
@@ -233,7 +233,7 @@ d4e5 finishes:
 abc1 sees the commit message. The previously-staged files are resolved.
 ```
 
-### `reserve <hash> <resource> [--ttl SECONDS] [--timeout SECONDS]`
+### `reserve <hash> <resource> [--ttl SECONDS] [--timeout SECONDS] [--renew]`
 
 Reserves a shared resource for exclusive use. Unlike file claims, resources are physically exclusive — two agents cannot run the test suite simultaneously.
 
@@ -241,11 +241,13 @@ Resources must be defined in `resources.json`. Attempting to reserve an undefine
 
 - `--ttl`: Override the resource's default TTL (in seconds).
 - `--timeout`: How long to wait if the resource is busy (default 30 seconds, polls every 500ms).
+- `--renew`: Atomically release the resource before re-reserving. Use this instead of `release` + `reserve` to avoid a race condition where another agent grabs the resource between the two calls.
 
 **Behavior:**
 
 - **Unreserved:** reserves it immediately. Sends a "reserve" channel message.
 - **Already held by this agent:** refreshes the TTL.
+- **Already held by this agent, `--renew` set:** atomically releases (sends "release" channel message) then re-reserves (sends "reserve" channel message) within a single lock acquisition. This avoids the race condition where another agent grabs the resource between a separate `release` and `reserve`.
 - **Held by another agent, TTL expired:** takes it over with a warning to stderr. Sends a channel message.
 - **Held by another agent, TTL valid:** waits (polling), retrying until freed or timeout.
 - **Timeout reached:** exit code 2.

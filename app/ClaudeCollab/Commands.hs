@@ -555,8 +555,8 @@ isExpired now r =
   in elapsed > fromIntegral (resTtl r)
 
 -- | Reserve a shared resource
-cmdReserve :: Text -> Text -> Maybe Int -> Int -> IO ()
-cmdReserve hash resource mbTtl timeoutSec = do
+cmdReserve :: Text -> Text -> Maybe Int -> Int -> Bool -> IO ()
+cmdReserve hash resource mbTtl timeoutSec renew = do
   resources <- readResources
   case Map.lookup resource resources of
     Nothing -> do
@@ -566,14 +566,14 @@ cmdReserve hash resource mbTtl timeoutSec = do
       exitWithCode exitGeneral
     Just resDef -> do
       let ttl = maybe (resDefaultTtl resDef) id mbTtl
-      reserveLoop hash resource ttl timeoutSec
+      reserveLoop hash resource ttl timeoutSec renew
 
-reserveLoop :: Text -> Text -> Int -> Int -> IO ()
-reserveLoop hash resource ttl timeoutSec = go (timeoutSec * 2)  -- 500ms intervals
+reserveLoop :: Text -> Text -> Int -> Int -> Bool -> IO ()
+reserveLoop hash resource ttl timeoutSec renew = go (timeoutSec * 2)  -- 500ms intervals
   where
     go 0 = do
       -- Final attempt
-      result <- tryReserve hash resource ttl
+      result <- tryReserve hash resource ttl renew
       case result of
         Right () -> return ()
         Left (holder, remaining) -> do
@@ -583,23 +583,31 @@ reserveLoop hash resource ttl timeoutSec = go (timeoutSec * 2)  -- 500ms interva
           jsonError ("Timed out waiting for " <> resource)
           exitWithCode exitLockTimeout
     go remaining = do
-      result <- tryReserve hash resource ttl
+      result <- tryReserve hash resource ttl renew
       case result of
         Right () -> return ()
         Left _ -> do
           threadDelay 500000  -- 500ms
           go (remaining - 1)
 
-tryReserve :: Text -> Text -> Int -> IO (Either (Text, Int) ())
-tryReserve hash resource ttl = do
+tryReserve :: Text -> Text -> Int -> Bool -> IO (Either (Text, Int) ())
+tryReserve hash resource ttl renew = do
   withMkdirLock reserveLockDir 5.0 $ do
     now <- getCurrentTime
     reservations <- readReservations
-    case Map.lookup resource reservations of
+    -- Atomically release before re-reserving (avoids race with other agents)
+    reservations' <- if renew
+          then case Map.lookup resource reservations of
+            Just existing | resHolder existing == hash -> do
+              _ <- sendMessage hash Release ("Released " <> resource) (Just resource)
+              return (Map.delete resource reservations)
+            _ -> return reservations
+          else return reservations
+    case Map.lookup resource reservations' of
       Nothing -> do
         -- Unreserved, take it
         let r = Reservation hash now ttl Nothing
-        writeReservations (Map.insert resource r reservations)
+        writeReservations (Map.insert resource r reservations')
         _ <- sendMessage hash Reserve ("Reserved " <> resource) (Just resource)
         printJSON $ encode $ object
           [ "ok"       .= True
@@ -611,7 +619,7 @@ tryReserve hash resource ttl = do
         | resHolder existing == hash -> do
             -- Already ours, refresh TTL
             let r = existing { resAcquired = now, resTtl = ttl }
-            writeReservations (Map.insert resource r reservations)
+            writeReservations (Map.insert resource r reservations')
             printJSON $ encode $ object
               [ "ok"       .= True
               , "resource" .= resource
@@ -624,7 +632,7 @@ tryReserve hash resource ttl = do
             printError $ "WARNING: Stale reservation from " ++ T.unpack (resHolder existing)
               ++ " expired. Taking over."
             let r = Reservation hash now ttl Nothing
-            writeReservations (Map.insert resource r reservations)
+            writeReservations (Map.insert resource r reservations')
             _ <- sendMessage hash Reserve
               ("Reserved " <> resource <> " (expired from " <> resHolder existing <> ")")
               (Just resource)
