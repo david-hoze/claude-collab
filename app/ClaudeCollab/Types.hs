@@ -196,7 +196,7 @@ outputLog hash = agentDir hash ++ "/output.log"
 -- | Default resources created by init
 defaultResources :: Resources
 defaultResources = Map.fromList
-  [ ("test",    ResourceDef 300 "Test suite")
-  , ("build",   ResourceDef 300 "Build / compile")
-  , ("install", ResourceDef 300 "Package installation (npm, pip, etc.)")
+  [ ("test",    ResourceDef 1800 "Test suite")
+  , ("build",   ResourceDef 1800 "Build / compile")
+  , ("install", ResourceDef 1800 "Package installation (npm, pip, etc.)")
   ]

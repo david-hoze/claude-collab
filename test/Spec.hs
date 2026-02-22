@@ -179,6 +179,7 @@ registryTests = do
               { agentStarted = read "2025-01-15 10:00:00 UTC"
               , agentStatus  = "active"
               , agentClaimed = Map.empty
+              , agentName    = Nothing
               }
         let reg = Map.singleton "abc1" info
         writeRegistry reg
@@ -193,6 +194,7 @@ registryTests = do
                 , agentStatus  = "active"
                 , agentClaimed = Map.singleton "src/test.ts"
                     (ClaimState False Nothing)
+                , agentName    = Nothing
                 }
           return (Map.insert "d4e5" info reg, "inserted")
         reg <- readRegistry
@@ -298,6 +300,7 @@ integrationTests = do
           { agentStarted = read "2025-01-15 10:00:00 UTC"
           , agentStatus  = "active"
           , agentClaimed = Map.empty
+          , agentName    = Nothing
           }
         -- Manually do what cmdFilesClaim does internally
         modifyRegistry $ \reg -> do
@@ -329,12 +332,35 @@ integrationTests = do
                 { agentStarted = read "2025-01-15 10:30:00 UTC"
                 , agentStatus  = "active"
                 , agentClaimed = Map.singleton "src/auth.ts" (ClaimState False Nothing)
+                , agentName    = Nothing
                 }
           return (Map.insert "agent2" info reg, ())
         reg <- readRegistry
         let agent1Has = maybe False (Map.member "src/auth.ts" . agentClaimed) (Map.lookup "agent1" reg)
         let agent2Has = maybe False (Map.member "src/auth.ts" . agentClaimed) (Map.lookup "agent2" reg)
         assert (agent1Has && agent2Has) "both agents should claim src/auth.ts"
+
+    , runTest "agent with staged files can stage new unstaged claims" $ do
+        -- Setup: agent with one file already staged, one new unstaged claim
+        let claims = Map.fromList
+              [ ("src/old.ts", ClaimState True (Just "old commit msg"))
+              , ("src/new.ts", ClaimState False Nothing)
+              ]
+        writeRegistry $ Map.singleton "stageAgent" AgentInfo
+          { agentStarted = read "2025-01-15 10:00:00 UTC"
+          , agentStatus  = "active"
+          , agentClaimed = claims
+          , agentName    = Nothing
+          }
+        reg <- readRegistry
+        case Map.lookup "stageAgent" reg of
+          Nothing -> return $ Fail "stageAgent not in registry"
+          Just info -> do
+            let (staged, unstaged) = Map.partition claimStaged (agentClaimed info)
+            let unstagedOnly = [fp | (fp, cs) <- Map.toList (agentClaimed info), not (claimStaged cs)]
+            assert (Map.size staged == 1 && Map.size unstaged == 1
+                    && unstagedOnly == ["src/new.ts"])
+              "should have 1 staged and 1 unstaged claim, unstaged list should be [src/new.ts]"
 
     , runTest "solo commit with dirty file" $ do
         -- Create a file, add it as claimed
@@ -344,6 +370,7 @@ integrationTests = do
           { agentStarted = read "2025-01-15 10:00:00 UTC"
           , agentStatus  = "active"
           , agentClaimed = Map.singleton "src_solo.ts" (ClaimState False Nothing)
+          , agentName    = Nothing
           }
         -- We can't easily test the full commit flow without capturing stdout,
         -- but we can verify the git operations work

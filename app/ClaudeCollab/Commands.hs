@@ -293,16 +293,22 @@ cmdCommit hash commitMsg = do
       jsonError ("Agent " <> hash <> " not found in registry")
       exitWithCode exitGeneral
     Just myInfo -> do
-      -- Step 1: Check for pending commit
-      let hasPending = any claimStaged (Map.elems (agentClaimed myInfo))
-      if hasPending
+      -- Partition claims into already-staged (pending) and not-yet-staged
+      let (stagedClaims, unstagedClaims) = Map.partition claimStaged (agentClaimed myInfo)
+      if Map.null unstagedClaims
         then do
-          let pendingFiles = [ fp | (fp, cs) <- Map.toList (agentClaimed myInfo), claimStaged cs ]
-          let waitingOn = findWaitingOn pendingFiles hash reg
-          printError $ "WARNING: You have a pending commit (waiting on "
-            ++ T.unpack (T.intercalate ", " (map fst waitingOn))
-            ++ " for " ++ show (map snd waitingOn) ++ "). Cannot commit again until it resolves."
-          exitWithCode exitGeneral
+          -- Nothing new to commit
+          if not (Map.null stagedClaims)
+            then do
+              let pendingFiles = Map.keys stagedClaims
+              let waitingOn = findWaitingOn pendingFiles hash reg
+              printError $ "WARNING: All claimed files are already staged (waiting on "
+                ++ T.unpack (T.intercalate ", " (map fst waitingOn))
+                ++ " for " ++ show (map snd waitingOn) ++ "). No new files to commit."
+              exitWithCode exitGeneral
+            else
+              -- No claims at all — doCommit will report "no dirty files"
+              doCommit hash commitMsg myInfo reg
         else doCommit hash commitMsg myInfo reg
 
 doCommit :: Text -> Text -> AgentInfo -> Registry -> IO ()
@@ -315,7 +321,7 @@ doCommit hash commitMsg myInfo reg = do
       exitWithCode exitGitFailed
     Right gitFiles -> do
       let dirtyPaths = map (normalizeSlashes . gfsPath) gitFiles
-      let myClaimed = Map.keys (agentClaimed myInfo)
+      let myClaimed = [fp | (fp, cs) <- Map.toList (agentClaimed myInfo), not (claimStaged cs)]
       let myDirtyFiles = filter (`elem` dirtyPaths) myClaimed
 
       -- Step 3: Warn about unclaimed dirty files

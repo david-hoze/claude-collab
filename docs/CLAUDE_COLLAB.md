@@ -86,6 +86,7 @@ claude-collab files claim $HASH <file> --shared
 When you're done with your part of a co-claimed file, just run `commit` as normal.
 
 - If the other agent isn't done yet, your files will be **staged** (git add) and you're free to work on other things.
+- You can keep claiming and committing new files even while waiting — only the already-staged files are held back.
 - When the last agent runs `commit`, the actual git commit happens with everyone's changes included.
 - You'll see a channel message when the commit goes through.
 

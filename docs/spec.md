@@ -68,9 +68,9 @@ Registers a new agent and sets up the working environment.
 2. Creates `resources.json` with defaults if it doesn't exist:
    ```json
    {
-     "test": { "default_ttl": 300, "description": "Test suite" },
-     "build": { "default_ttl": 300, "description": "Build / compile" },
-     "install": { "default_ttl": 300, "description": "Package installation (npm, pip, etc.)" }
+     "test": { "default_ttl": 1800, "description": "Test suite" },
+     "build": { "default_ttl": 1800, "description": "Build / compile" },
+     "install": { "default_ttl": 1800, "description": "Package installation (npm, pip, etc.)" }
    }
    ```
 3. Creates `reservations.json` as `{}` if it doesn't exist.
@@ -174,13 +174,13 @@ Exit code 3 if git fails.
 Commits this agent's claimed dirty files. This is the second core primitive.
 
 **Rules:**
-- **All-or-nothing.** All of an agent's claimed dirty files are part of one commit. If any co-claimed file is waiting on another agent, the *entire* commit is staged and waits.
-- **One pending commit at a time.** An agent cannot commit again while it has staged files waiting on co-claimers. Exit code 1 if attempted.
+- **All-or-nothing per commit.** All of an agent's *unstaged* claimed dirty files are part of one commit. If any co-claimed file is waiting on another agent, those files are staged and wait.
+- **Additional staging allowed.** An agent with pending staged files can stage *new* unstaged claims. Already-staged files (and their commit messages) are preserved untouched. Only if the agent has no new unstaged claims does the command error with exit code 1.
 - Unclaimed dirty files are warned about but not staged.
 
 **Behavior:**
 
-1. If the agent already has staged files (pending commit): error, exit code 1.
+1. If all of the agent's claimed files are already staged (no new work): error, exit code 1.
 2. Collect the agent's claimed files that are dirty per `git status`.
 3. Warn about any unclaimed dirty files (stderr only, not staged).
 4. Check if any dirty claimed file is co-claimed where co-claimers haven't staged yet.
@@ -215,11 +215,13 @@ abc1 finishes:
   -> src/auth.ts co-claimed, d4e5 not staged -> WAITING
   -> stages ALL files (including solo src/config.ts)
   -> "Staged 2 files. Waiting on d4e5 for src/auth.ts."
-  -> abc1 is free to keep working, but cannot commit again.
+  -> abc1 is free to keep working on new files.
 
-abc1 tries to commit more work:
-  $ claude-collab commit abc1 -m "another feature"
-  -> ERROR: pending commit.
+abc1 claims and edits src/utils.ts while waiting:
+  $ claude-collab files claim abc1 src/utils.ts
+  $ claude-collab commit abc1 -m "add helper functions"
+  -> src/utils.ts is a new unstaged claim -> stages it normally
+  -> Already-staged files (src/auth.ts, src/config.ts) are untouched.
 
 d4e5 finishes:
   $ claude-collab commit d4e5 -m "add rate limiting"
@@ -228,7 +230,7 @@ d4e5 finishes:
   -> git commit with combined message
   -> unclaims for BOTH agents
 
-abc1 sees the commit message. Free again.
+abc1 sees the commit message. The previously-staged files are resolved.
 ```
 
 ### `reserve <hash> <resource> [--ttl SECONDS] [--timeout SECONDS]`
@@ -340,8 +342,8 @@ Uncaught exceptions print `{"ok": false, "error": "..."}` and exit with code 1.
 ### Resources (`resources.json`)
 ```json
 {
-  "test": { "default_ttl": 300, "description": "Test suite" },
-  "build": { "default_ttl": 300, "description": "Build / compile" }
+  "test": { "default_ttl": 1800, "description": "Test suite" },
+  "build": { "default_ttl": 1800, "description": "Build / compile" }
 }
 ```
 
