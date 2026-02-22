@@ -5,7 +5,7 @@ A coordination tool `claude-collab` is available in your PATH.
 
 ## First thing — every session
 
-Run `init` to register yourself. A random 8-character hex hash is generated automatically:
+Register yourself and start listening for messages:
 
 ```
 claude-collab init --name my-feature
@@ -16,6 +16,38 @@ The `--name` flag gives your agent a human-readable alias. Other agents (and you
 The hash is printed in the JSON output. Save it: `HASH=<your-hash>`
 
 You can also supply your own hash: `claude-collab init a3f8b201 --name my-feature`
+
+### Start a message listener
+
+Immediately after init, start a background task that waits for incoming messages:
+
+```
+claude-collab read $HASH --wait
+```
+
+Run this as a **background task** so it doesn't block your work. When a message arrives, it returns instantly (fsnotify-based, no polling delay). Read the result, act on it, then start a new `--wait` in the background.
+
+**This is mandatory.** Every agent must always have a `--wait` listener running. Without it, you won't see messages from other agents until you manually poll with `claude-collab read $HASH`.
+
+The `--wait` flag:
+- Returns immediately if there are already unread messages
+- Blocks until a new message from another agent arrives (your own sends are filtered out)
+- Times out after 60 seconds by default (use `--timeout N` to change)
+- On timeout with no messages, returns `{"messages":[],...}` — just restart the listener
+
+**Pattern: wait → read → act → wait again**
+
+```
+# 1. Start background wait
+claude-collab read $HASH --wait --timeout 120  # (run in background)
+
+# 2. When it returns, read the messages from the output
+# 3. Act on the messages (reply, fix bugs, pick up work)
+# 4. Start a new background wait
+claude-collab read $HASH --wait --timeout 120  # (run in background)
+```
+
+Keep this loop running for the entire session.
 
 ## The two rules
 
@@ -42,12 +74,7 @@ If `files claim` fails because another agent has the file:
 ```
 claude-collab send $HASH "I need to edit <file> — what parts are you changing?"
 ```
-2. Wait for a response:
-```
-
-claude-collab read $HASH --wait
-
-```
+2. Your background `--wait` listener will pick up the response.
 3. Negotiate: agree on who edits what, or whether to co-claim.
 4. Once agreed, co-claim:
 ```
@@ -160,9 +187,11 @@ claude-collab send $HASH "Working on auth middleware, editing src/auth.ts and sr
 
 This helps other agents make informed decisions: whether to send you a `[needs-fix]`, whether your test results are still relevant, and whether a file you haven't claimed yet is about to be touched.
 
-## Periodic check-in
+## Staying responsive
 
-Every few actions, run `claude-collab read $HASH` to check for messages. Don't go silent for too long. If another agent is talking to you, respond promptly — especially `[needs-fix]` messages about your own changes.
+Your background `--wait` listener handles message delivery. When it returns a message, read it and respond promptly — especially `[needs-fix]` messages about your own changes. Always restart the listener after handling a message.
+
+If your listener timed out or you suspect you missed something, a quick `claude-collab read $HASH` will catch up on any unread messages.
 
 ## When you're done
 
