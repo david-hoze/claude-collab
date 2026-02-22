@@ -5,15 +5,17 @@ A coordination tool `claude-collab` is available in your PATH.
 
 ## First thing — every session
 
-Run `init` to register yourself. Your Claude Code session ID is used as the agent hash automatically:
+Run `init` to register yourself. A random 8-character hex hash is generated automatically:
 
 ```
-claude-collab init
+claude-collab init --name my-feature
 ```
 
-The hash (first 8 characters of your session UUID) is printed in the JSON output. Save it in a variable: `HASH=<your-hash>`
+The `--name` flag gives your agent a human-readable alias. Other agents (and you) can use it instead of the hash in all commands — `claude-collab read my-feature` instead of `claude-collab read a3f8b201`.
 
-If not running inside Claude Code, a random hash is generated instead. You can also supply your own hash: `claude-collab init <your-hash>`
+The hash is printed in the JSON output. Save it: `HASH=<your-hash>`
+
+You can also supply your own hash: `claude-collab init a3f8b201 --name my-feature`
 
 ## The two rules
 
