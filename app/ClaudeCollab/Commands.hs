@@ -26,8 +26,11 @@ import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
-import System.Directory (createDirectoryIfMissing, doesFileExist, removeDirectoryRecursive,
-                         removeFile, renameFile)
+import Data.List (sortOn, isSuffixOf)
+import Data.Ord (Down(..))
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist,
+                         getHomeDirectory, getCurrentDirectory, getModificationTime,
+                         listDirectory, removeDirectoryRecursive, removeFile, renameFile)
 import System.Exit (ExitCode(..), exitWith)
 import System.Process (readProcessWithExitCode)
 import System.FilePath ((<.>))
@@ -54,21 +57,63 @@ printError = hPutStrLn stderr
 jsonError :: Text -> IO ()
 jsonError msg = printJSON $ encode $ object ["ok" .= False, "error" .= msg]
 
--- | Generate a random 8-character hex hash
+-- | Derive the agent hash from the current Claude Code session ID.
+-- Looks in ~/.claude/projects/<project>/ for the most recently modified
+-- .jsonl file — its filename (sans extension) is the session UUID.
+-- Uses the first 8 characters as the hash.
+-- Falls back to openssl rand if not running inside Claude Code.
 generateHash :: IO Text
 generateHash = do
-  (code, out, _) <- readProcessWithExitCode "openssl" ["rand", "-hex", "4"] ""
-  case code of
-    ExitSuccess -> pure $ T.strip (T.pack out)
-    _           -> do
-      -- Fallback: use current time in picoseconds as entropy
-      now <- getCurrentTime
-      let s = show now  -- e.g. "2026-02-21 21:20:05.123456 UTC"
-          digits = filter (\c -> c >= '0' && c <= '9') s
-          hexChars = "0123456789abcdef"
-          toHex n = [hexChars !! (n `mod` 16)]
-          h = concatMap (\c -> toHex (fromEnum c)) (take 8 digits)
-      pure (T.pack (take 8 (h ++ "00000000")))
+  mbSession <- getClaudeSessionId
+  case mbSession of
+    Just sid -> pure (T.take 8 sid)
+    Nothing  -> do
+      (code, out, _) <- readProcessWithExitCode "openssl" ["rand", "-hex", "4"] ""
+      case code of
+        ExitSuccess -> pure $ T.strip (T.pack out)
+        _           -> do
+          now <- getCurrentTime
+          let s = show now
+              digits = filter (\c -> c >= '0' && c <= '9') s
+              hexChars = "0123456789abcdef"
+              toHex n = [hexChars !! (n `mod` 16)]
+              h = concatMap (\c -> toHex (fromEnum c)) (take 8 digits)
+          pure (T.pack (take 8 (h ++ "00000000")))
+
+-- | Try to find the current Claude Code session ID.
+-- CWD is converted to the project directory name format:
+--   C:\Users\foo\repos\bar → C--Users-foo-repos-bar
+-- Then we find the most recently modified .jsonl in that directory.
+getClaudeSessionId :: IO (Maybe Text)
+getClaudeSessionId = do
+  home <- getHomeDirectory
+  cwd <- getCurrentDirectory
+  let projectDir = home ++ "/.claude/projects/" ++ cwdToProjectName cwd
+  exists <- doesDirectoryExist projectDir
+  if not exists
+    then pure Nothing
+    else do
+      entries <- listDirectory projectDir
+      let jsonls = filter (".jsonl" `isSuffixOf`) entries
+      if null jsonls
+        then pure Nothing
+        else do
+          -- Sort by modification time, most recent first
+          timed <- mapM (\f -> do
+            t <- getModificationTime (projectDir ++ "/" ++ f)
+            pure (f, t)) jsonls
+          let sorted = sortOn (Down . snd) timed
+          case sorted of
+            ((f, _):_) -> do
+              let sessionId = T.pack (takeWhile (/= '.') f)
+              pure (Just sessionId)
+            [] -> pure Nothing
+
+-- | Convert a CWD to Claude's project directory name format.
+-- "C:\Users\foo\repos\bar" → "C--Users-foo-repos-bar"
+-- "/home/foo/repos/bar"    → "-home-foo-repos-bar"
+cwdToProjectName :: FilePath -> String
+cwdToProjectName = map (\c -> if c == '/' || c == '\\' || c == ':' then '-' else c)
 
 -- | Initialize an agent
 cmdInit :: Maybe Text -> IO ()
