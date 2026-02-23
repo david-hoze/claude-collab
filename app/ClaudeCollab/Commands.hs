@@ -15,6 +15,7 @@ module ClaudeCollab.Commands
 import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException, try)
 import Data.Aeson (Value, eitherDecodeStrict', encode, object, (.=))
+import Data.List (intercalate)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Lazy.Char8 as BL8
@@ -368,7 +369,7 @@ buildCombinedMsg hash commitMsg coClaimedInfo _reg =
       allMsgs = nubStrings (otherMsgs ++ [myMsg])
   in if null otherMsgs
      then T.unpack commitMsg  -- Solo commit, use plain message
-     else unlines allMsgs
+     else intercalate " | " allMsgs
   where
     nubStrings [] = []
     nubStrings (x:xs) = x : nubStrings (filter (/= x) xs)
