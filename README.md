@@ -6,97 +6,97 @@ A cross-platform CLI tool that enables multiple [Claude Code](https://claude.com
 
 When multiple Claude Code agents work on the same codebase simultaneously, they need to know who's editing what and avoid stepping on each other's changes. `claude-collab` provides:
 
-- **Message channel** — agents can chat with each other to negotiate who does what
 - **File claims** — agents declare which files they're editing, with conflict detection
 - **Resource reservations** — exclusive access to shared resources like the test suite or build
 - **Safe git commits** — only commits an agent's own claimed files, with two-phase commit for shared files
-
-## Building
-
-Requires GHC 9.6+ and Cabal 3.0+.
-
-```
-cabal build
-```
-
-The output binary is `claude-collab` (or `claude-collab.exe` on Windows).
-
-To install it to your PATH:
-
-```
-cabal install
-```
+- **Automatic hooks** — agents register, claim files, and clean up automatically via Claude Code hooks
 
 ## Quick start
 
+Build and install:
+
 ```bash
-# Agent 1 initializes
-claude-collab init abc12345
-
-# Claim a file before editing
-claude-collab files claim abc12345 src/auth.ts
-
-# Check for messages from other agents
-claude-collab read abc12345
-
-# Send a message
-claude-collab send abc12345 "Working on the auth refactor"
-
-# Commit when done
-claude-collab commit abc12345 -m "refactor auth validation"
-
-# Clean up when leaving
-claude-collab cleanup abc12345
+cabal build && cabal install
 ```
+
+Set up a project:
+
+```bash
+cd my-project
+claude-collab install
+```
+
+This installs Claude Code hooks and configuration into your repo. From here, open two Claude Code sessions in the same project — the hooks handle everything automatically:
+
+1. Each agent registers on session start
+2. Files are auto-claimed before edits
+3. Agents commit through the tool: `claude-collab commit <agent> -m "message"`
+4. Agents clean up on session end
+
+## How it works
+
+**Two primitives — claim and commit.**
+
+**Claim** is the entry gate: it declares intent to edit a file and forces a pause on conflicts. If two agents want the same file, the second claim is rejected — agents must negotiate and co-claim with `--shared`.
+
+**Commit** is the exit gate: it stages and commits only the agent's own claimed files. For co-claimed files, it's a two-phase operation — the first agent to commit *stages* their changes, and the last agent triggers the actual `git commit` with everyone's changes and a combined message.
+
+**Resource reservations** provide exclusive access to shared resources (test suite, build system). An agent reserves a resource, does its work, and releases it. If busy, the tool polls until the resource is free or times out.
+
+**Hooks** automate the workflow. The `install` command sets up three Claude Code hooks:
+- **SessionStart** — auto-registers the agent
+- **PreToolUse** (Edit/Write) — auto-claims files before editing
+- **SessionEnd** — auto-cleanup
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `init <hash>` | Register as an agent |
-| `send <hash> <msg>` | Send a channel message |
-| `read <hash>` | Read new messages |
-| `watch <hash>` | Stream messages continuously |
-| `files claim <hash> <paths...>` | Claim files for editing |
-| `files unclaim <hash> <paths...>` | Release file claims |
+| `init [HASH] [--name NAME]` | Register as an agent |
+| `install` | Install hooks and config into current repo |
+| `files claim <HASH\|NAME> <paths...> [--shared]` | Claim files for editing |
+| `files unclaim <HASH\|NAME> <paths...>` | Release file claims |
 | `files status` | Show all dirty files and their owners |
-| `commit <hash> -m <msg>` | Commit claimed files |
-| `reserve <hash> <resource>` | Reserve a shared resource |
-| `release <hash> <resource>` | Release a reserved resource |
+| `commit <HASH\|NAME> -m <msg>` | Commit claimed files |
+| `reserve <HASH\|NAME> <resource> [--ttl N] [--timeout N] [--renew]` | Reserve a shared resource |
+| `release <HASH\|NAME> <resource>` | Release a reserved resource |
 | `reservations` | Show resource status |
 | `list` | List all agents |
-| `cleanup <hash>` | Unregister and clean up |
-| `tee <hash>` | Pipe stdin to stdout + log file |
+| `cleanup <HASH\|NAME>` | Unregister and clean up |
+| `tee <HASH\|NAME>` | Pipe stdin to stdout + log file |
 
-See [docs/spec.md](docs/spec.md) for full command reference.
+All commands that take `HASH|NAME` accept either the agent hash or the human-readable name registered with `--name`.
 
-## How co-claimed commits work
+See [docs/spec.md](docs/spec.md) for the full command reference.
 
-When two agents need to edit the same file, they co-claim it with `--shared`. When the first agent commits, their changes are staged (`git add`) but not committed. When the last agent commits, the actual `git commit` fires with everyone's changes and a combined message. Agents don't need to coordinate timing — just `commit` when done and move on.
+## Building from source
 
-## Setting up your project
-
-Once `claude-collab` is in your PATH, run the install script from your project root:
+Requires GHC 9.6+ and Cabal 3.0+.
 
 ```bash
-bash /path/to/claude-collab/install.sh
+cabal build
 ```
 
-This will:
-- Copy `CLAUDE_COLLAB.md` to your project root (agent-facing instructions)
-- Install Claude Code hooks into `.claude/hooks/` (auto-init, auto-claim, auto-cleanup)
-- Configure hooks in `.claude/settings.json`
-- Create `.claude/agents/resources.json` with defaults
-- Add a collaboration section to your `CLAUDE.md` (or create one)
+The output binary is `claude-collab` (or `claude-collab.exe` on Windows).
 
-## Running tests
+To install to your PATH:
 
+```bash
+cabal install
 ```
+
+To run tests:
+
+```bash
 cabal test
 ```
 
 ## Documentation
 
-- [CLAUDE_COLLAB.md](docs/CLAUDE_COLLAB.md) — agent-facing instructions (copy into your project)
+- [Getting started](docs/tutorials/getting-started.md) — step-by-step setup and first run
+- [Tutorial: Separate files](docs/tutorials/separate-files.md) — two agents editing different files
+- [Tutorial: Shared files](docs/tutorials/shared-files.md) — co-claiming and two-phase commits
+- [Tutorial: Resource reservations](docs/tutorials/resource-reservations.md) — exclusive access to test/build
+- [CLAUDE_COLLAB.md](docs/CLAUDE_COLLAB.md) — agent-facing instructions (copied into your project by `install`)
 - [Specification](docs/spec.md) — full command reference and JSON schemas
 - [Implementation status](docs/implementation-status.md) — architecture, internals, known limitations

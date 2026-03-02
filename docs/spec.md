@@ -31,17 +31,18 @@ No rigid locks on files, no mutexes — the only hard serialization is the physi
 ## CLI commands
 
 ```
-claude-collab init <hash>
-claude-collab files claim <hash> <path> [<path>...] [--shared]
-claude-collab files unclaim <hash> <path> [<path>...]
+claude-collab init [HASH] [--name NAME]
+claude-collab install
+claude-collab files claim <HASH|NAME> <path> [<path>...] [--shared]
+claude-collab files unclaim <HASH|NAME> <path> [<path>...]
 claude-collab files status
-claude-collab commit <hash> -m <message>
-claude-collab reserve <hash> <resource> [--ttl SECONDS] [--timeout SECONDS] [--renew]
-claude-collab release <hash> <resource>
+claude-collab commit <HASH|NAME> -m <message>
+claude-collab reserve <HASH|NAME> <resource> [--ttl SECONDS] [--timeout SECONDS] [--renew]
+claude-collab release <HASH|NAME> <resource>
 claude-collab reservations
 claude-collab list
-claude-collab cleanup <hash>
-claude-collab tee <hash>
+claude-collab cleanup <HASH|NAME>
+claude-collab tee <HASH|NAME>
 ```
 
 All commands print JSON to stdout and diagnostics/warnings to stderr.
@@ -50,9 +51,12 @@ All commands print JSON to stdout and diagnostics/warnings to stderr.
 
 ## Command reference
 
-### `init <hash>`
+### `init [HASH] [--name NAME]`
 
 Registers a new agent and sets up the working environment.
+
+- `HASH` is optional — if omitted, a random hash is generated.
+- `--name` sets a human-readable name for the agent (e.g., `--name "agent-a3f8b201"`). The name can be used instead of the hash in all subsequent commands.
 
 1. Creates `.claude/agents/<hash>/` directory.
 2. Creates `resources.json` with defaults if it doesn't exist:
@@ -64,9 +68,26 @@ Registers a new agent and sets up the working environment.
    }
    ```
 3. Creates `reservations.json` as `{}` if it doesn't exist.
-4. Adds an entry to `registry.json` with `started` timestamp, empty `claimed` map, and `status: "active"`.
+4. Adds an entry to `registry.json` with `started` timestamp, empty `claimed` map, `status: "active"`, and optional `agentName`.
 
 **Output:** `{"ok": true, "hash": "<hash>", "agent_dir": ".claude/agents/<hash>"}`
+
+### `install`
+
+Installs hooks and configuration into the current repository for automatic multi-agent coordination.
+
+Creates:
+- `CLAUDE_COLLAB.md` — agent-facing instructions (if missing)
+- `.claude/hooks/session-start-init.sh` — auto-registers agents on session start
+- `.claude/hooks/pre-edit-claim.sh` — auto-claims files before Edit/Write
+- `.claude/hooks/session-end-cleanup.sh` — auto-cleans up on session end
+- `.claude/settings.json` — hooks configuration (if missing)
+- `.claude/agents/resources.json` — default shared resources (if missing)
+- `CLAUDE.md` — updated with collaboration section (created if missing)
+
+Hooks are always overwritten to ensure they're up to date. Other files are only created if they don't already exist.
+
+**Output:** Status messages to stdout describing what was created/updated.
 
 ### `files claim <hash> <path> [<path>...] [--shared]`
 
@@ -139,10 +160,9 @@ Commits this agent's claimed dirty files. This is the second core primitive.
    {"ok": true, "commit": "3f2a1b", "committed": ["src/auth.ts", "src/config.ts"]}
    ```
 
-For co-claimed commits, messages from all co-claimers are concatenated:
+For co-claimed commits, messages from all co-claimers are joined with `|`:
 ```
-[abc1] refactor validateToken + update config
-[d4e5] add rate limiting
+[abc1] refactor validateToken + update config | [d4e5] add rate limiting
 ```
 
 Solo commits use the plain message without the agent prefix.

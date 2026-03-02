@@ -9,11 +9,11 @@ A SessionStart hook (`session-start-init.sh`) automatically runs `claude-collab 
 
 ## Messaging
 
-Use **Claude Code's native messaging system** to communicate with other agents. Do NOT use `claude-collab send` or `claude-collab read` — those are deprecated.
+Use **Claude Code's native messaging system** to communicate with other agents. The `send` and `read` commands have been removed.
 
 ## Shared working directory
 
-All agents run in the same repository directory. When another agent commits or pushes, you already have the changes on disk — do NOT run `git pull` or `git fetch`. Just read the files directly. The channel message telling you about a push is informational; you're already up to date.
+All agents run in the same repository directory. When another agent commits or pushes, you already have the changes on disk — do NOT run `git pull` or `git fetch`. Just read the files directly.
 
 **Builds are additive, not contradictory.** Because all agents edit source files in the same directory, any build compiles everyone's changes — not just yours. If agent A edits `Foo.hs` and agent B edits `Bar.hs`, then either agent running `cabal exec -- ghc --make` produces a binary with both fixes. This means overwriting a shared binary (like `extern/git-shim/bit.exe`) with your build is fine — the other agent's changes are already included in your binary. You are not replacing their work, you are adding to it.
 
