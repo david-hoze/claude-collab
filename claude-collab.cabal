@@ -2,7 +2,17 @@ cabal-version:      3.0
 name:               claude-collab
 version:            0.1.0.0
 synopsis:           Cross-platform multi-agent coordination tool for Claude Code
+description:        Enables multiple Claude Code instances to coordinate while
+                    working in the same repository. Provides file claims, resource
+                    reservations, and safe git commits with two-phase commit for
+                    shared files.
 license:            MIT
+license-file:       LICENSE
+author:             David Hoze
+maintainer:         david-hoze
+homepage:           https://github.com/david-hoze/claude-collab
+bug-reports:        https://github.com/david-hoze/claude-collab/issues
+extra-source-files: CHANGELOG.md, LICENSE
 build-type:         Simple
 
 executable claude-collab

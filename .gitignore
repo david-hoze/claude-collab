@@ -1,5 +1,6 @@
 # Haskell / Cabal
 dist-newstyle/
+cabal.project.local
 .ghc.environment.*
 *.o
 *.hi
@@ -37,8 +38,8 @@ bit-git-router-dev.exe
 # Artifacts
 literate-output/
 
-# Ignore Claude local settings
-.claude/settings.local.json
+# Claude Code collaboration state (created by claude-collab install)
+.claude/
 
 # Ignore the workspace layout (very noisy)
 .obsidian/workspace.json
