@@ -145,7 +145,7 @@ registryTests = do
                     (ClaimState False Nothing)
                 , agentName    = Nothing
                 }
-          return (Map.insert "d4e5" info reg, "inserted")
+          return (Map.insert "d4e5" info reg, "inserted" :: String)
         reg <- readRegistry
         assert (result == "inserted" && Map.member "d4e5" reg)
           "modify should insert and return result"
@@ -181,7 +181,7 @@ reservationTests = do
 
   results <- sequence
     [ runTest "resources.json created with defaults" $ do
-        exists <- doesFileExist resourcesPath
+        _exists <- doesFileExist resourcesPath
         bs <- BS.readFile resourcesPath
         case eitherDecodeStrict' bs :: Either String Resources of
           Left err -> return $ Fail $ "decode error: " ++ err
